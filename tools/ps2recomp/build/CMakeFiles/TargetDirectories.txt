@@ -1,0 +1,3 @@
+/home/runner/workspace/tools/ps2recomp/build/CMakeFiles/ps2recomp.dir
+/home/runner/workspace/tools/ps2recomp/build/CMakeFiles/edit_cache.dir
+/home/runner/workspace/tools/ps2recomp/build/CMakeFiles/rebuild_cache.dir
