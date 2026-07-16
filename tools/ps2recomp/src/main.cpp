@@ -178,7 +178,7 @@ int main(int argc, char* argv[]) {
         return cmd_extract(iso_path, outdir);
     }
     else if (cmd == "recomp") {
-        std::string out_c = (argc >= 4) ? argv[4] : "output.c";
+        std::string out_c = (argc >= 4) ? argv[3] : "output.c";
         return cmd_recomp(iso_path, out_c);
     }
     else {

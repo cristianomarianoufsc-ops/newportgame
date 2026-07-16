@@ -23,6 +23,7 @@ std::string DecodedInstr::to_string() const {
     std::ostringstream oss;
     oss << std::hex << std::setw(8) << std::setfill('0') << pc << "  "
         << std::setw(8) << std::setfill('0') << raw << "   "
+        << std::setfill(' ')   // reset fill before mnemonic
         << std::left << std::setw(10) << mnemonic
         << operands;
     return oss.str();
@@ -340,17 +341,131 @@ DecodedInstr MIPSDisassembler::decode_cop1(uint32_t word, uint32_t pc) {
     return d;
 }
 
+// EE MMI sub-opcode tables (EE User's Manual, Appendix A)
+// MMI0 sub-ops (funct=0x08, sub in bits [5:0] using shamt+funct overlap)
+static const char* mmi0_names[32] = {
+    "paddw","psubw","pcgtw","pmaxw",
+    "paddh","psubh","pcgth","pmaxh",
+    "paddb","psubb","pcgtb","?",
+    "?","?","?","?",
+    "paddsw","psubsw","pextlw","ppacw",
+    "paddsh","psubsh","pextlh","ppach",
+    "paddsb","psubsb","pextlb","ppacb",
+    "?","?","pext5","ppac5"
+};
+// MMI1 sub-ops (funct=0x28)
+static const char* mmi1_names[32] = {
+    "?","pabsw","pceqw","pminw",
+    "padsbh","pabsh","pceqh","pminh",
+    "?","?","pceqb","?",
+    "?","?","?","?",
+    "padduw","psubuw","pextuw","?",
+    "padduh","psubuh","pextuh","?",
+    "paddub","psubub","pextub","qfsrv",
+    "?","?","?","?"
+};
+// MMI2 sub-ops (funct=0x09)
+static const char* mmi2_names[32] = {
+    "pmaddw","?","psllvw","psrlvw",
+    "pmsubw","?","?","?",
+    "pmfhi","pmflo","pinth","?",
+    "pmultw","pdivw","pcpyld","?",
+    "pmaddh","phmadh","pand","pxor",
+    "pmsubh","phmsbh","?","?",
+    "?","?","pinteh","?",
+    "pmulth","pdivbw","pcpyud","?"
+};
+// MMI3 sub-ops (funct=0x29)
+static const char* mmi3_names[32] = {
+    "pmadduw","?","?","psravw",
+    "?","?","?","?",
+    "pmthi","pmtlo","pintoh","?",
+    "pmultuw","pdivuw","pcpyh","?",
+    "?","phmadh_?","por","pnor",
+    "?","phmsbh_?","?","?",
+    "?","?","?","?",
+    "?","?","pcpyh_?","?"
+};
+
 DecodedInstr MIPSDisassembler::decode_mmi(uint32_t word, uint32_t pc) {
     DecodedInstr d;
     d.raw = word; d.pc = pc;
     d.type = InstrType::R_TYPE;
     d.category = InstrCategory::VECTOR;
-    d.funct = BITS(word, 5, 0);
-    // MMI has sub-opcodes; just label them for now
-    d.mnemonic = "mmi." + std::to_string(d.funct);
-    std::ostringstream os;
-    os << "0x" << std::hex << word;
-    d.operands = os.str();
+
+    d.rs    = BITS(word, 25, 21);
+    d.rt    = BITS(word, 20, 16);
+    d.rd    = BITS(word, 15, 11);
+    d.shamt = BITS(word, 10,  6);
+    d.funct = BITS(word,  5,  0);
+
+    // Helper to format 3-reg operands
+    auto fmt3 = [&]{ std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rs) << ", " << reg(d.rt); d.operands = os.str(); };
+
+    switch (d.funct) {
+    // --- Scalar MMI ops ---
+    case 0x00: d.mnemonic = "madd";  fmt3(); break;
+    case 0x01: d.mnemonic = "maddu"; fmt3(); break;
+    case 0x04: d.mnemonic = "plzcw";
+               { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rs); d.operands = os.str(); } break;
+    case 0x10: d.mnemonic = "mfhi1"; d.operands = reg(d.rd); break;
+    case 0x11: d.mnemonic = "mthi1"; d.operands = reg(d.rs); break;
+    case 0x12: d.mnemonic = "mflo1"; d.operands = reg(d.rd); break;
+    case 0x13: d.mnemonic = "mtlo1"; d.operands = reg(d.rs); break;
+    case 0x18: d.mnemonic = "mult1"; fmt3(); break;
+    case 0x19: d.mnemonic = "multu1";fmt3(); break;
+    case 0x1A: d.mnemonic = "div1";  { std::ostringstream os; os << reg(d.rs) << ", " << reg(d.rt); d.operands = os.str(); } break;
+    case 0x1B: d.mnemonic = "divu1"; { std::ostringstream os; os << reg(d.rs) << ", " << reg(d.rt); d.operands = os.str(); } break;
+    case 0x1C: d.mnemonic = "madd1"; fmt3(); break;
+    case 0x1D: d.mnemonic = "maddu1";fmt3(); break;
+    case 0x30: { // PMFHL — sub-op in shamt
+        const char* pmfhl_names[] = {"pmfhl.lw","pmfhl.uw","pmfhl.slw","pmfhl.lh","pmfhl.sh"};
+        d.mnemonic = (d.shamt < 5) ? pmfhl_names[d.shamt] : "pmfhl?";
+        d.operands = reg(d.rd); break;
+    }
+    case 0x31: d.mnemonic = "pmthl.lw"; d.operands = reg(d.rs); break;
+    case 0x34: d.mnemonic = "psllh";
+               { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rt) << ", " << (int)d.shamt; d.operands = os.str(); } break;
+    case 0x36: d.mnemonic = "psrlh";
+               { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rt) << ", " << (int)d.shamt; d.operands = os.str(); } break;
+    case 0x37: d.mnemonic = "psrah";
+               { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rt) << ", " << (int)d.shamt; d.operands = os.str(); } break;
+    case 0x3C: d.mnemonic = "psllw";
+               { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rt) << ", " << (int)d.shamt; d.operands = os.str(); } break;
+    case 0x3E: d.mnemonic = "psrlw";
+               { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rt) << ", " << (int)d.shamt; d.operands = os.str(); } break;
+    case 0x3F: d.mnemonic = "psraw";
+               { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rt) << ", " << (int)d.shamt; d.operands = os.str(); } break;
+
+    // --- MMI0 parallel ops (sub-op in bits [10:6]) ---
+    case 0x08: {
+        uint8_t sub = d.shamt & 0x1F;
+        d.mnemonic = (sub < 32 && mmi0_names[sub][0] != '?') ? mmi0_names[sub] : ("mmi0." + std::to_string(sub));
+        fmt3(); break;
+    }
+    // --- MMI2 parallel ops ---
+    case 0x09: {
+        uint8_t sub = d.shamt & 0x1F;
+        d.mnemonic = (sub < 32 && mmi2_names[sub][0] != '?') ? mmi2_names[sub] : ("mmi2." + std::to_string(sub));
+        fmt3(); break;
+    }
+    // --- MMI1 parallel ops (sub-op in bits [10:6]) ---
+    case 0x28: {
+        uint8_t sub = d.shamt & 0x1F;
+        d.mnemonic = (sub < 32 && mmi1_names[sub][0] != '?') ? mmi1_names[sub] : ("mmi1." + std::to_string(sub));
+        fmt3(); break;
+    }
+    // --- MMI3 parallel ops ---
+    case 0x29: {
+        uint8_t sub = d.shamt & 0x1F;
+        d.mnemonic = (sub < 32 && mmi3_names[sub][0] != '?') ? mmi3_names[sub] : ("mmi3." + std::to_string(sub));
+        fmt3(); break;
+    }
+    default:
+        d.mnemonic = "mmi?";
+        { std::ostringstream os; os << "funct=0x" << std::hex << (int)d.funct; d.operands = os.str(); }
+        break;
+    }
     return d;
 }
 

@@ -14,15 +14,35 @@ void Recompiler::analyze() {
     std::cout << "[RECOMP] Starting function discovery from entry 0x"
               << std::hex << m_elf.entry_point << std::dec << "\n";
 
-    // Seed from entry point
-    discover_function(m_elf.entry_point, "ps2_entry");
+    // Use iterative BFS — avoid stack overflow on deep call graphs
+    std::queue<std::pair<uint32_t, std::string>> work;
+    work.push({m_elf.entry_point, "ps2_entry"});
 
     // Seed from symbol table (named functions)
     for (auto& sym : m_elf.symbols) {
-        // STT_FUNC = 2
         if ((sym.type & 0xf) == 2 && sym.value != 0 && !sym.name.empty()) {
-            if (m_functions.find(sym.value) == m_functions.end()) {
-                discover_function(sym.value, sym.name);
+            work.push({sym.value, sym.name});
+        }
+    }
+
+    static constexpr size_t MAX_FUNCTIONS = 50000;
+
+    while (!work.empty() && m_functions.size() < MAX_FUNCTIONS) {
+        auto [addr, name] = work.front();
+        work.pop();
+
+        if (m_functions.count(addr)) continue;
+        if (!m_elf.vaddr_to_offset(addr)) continue;
+
+        discover_function(addr, name);
+
+        // Enqueue callees
+        auto it = m_functions.find(addr);
+        if (it != m_functions.end()) {
+            for (uint32_t target : it->second.call_targets) {
+                if (!m_functions.count(target)) {
+                    work.push({target, ""});
+                }
             }
         }
     }
@@ -32,18 +52,19 @@ void Recompiler::analyze() {
 
 void Recompiler::discover_function(uint32_t addr, const std::string& name) {
     if (m_functions.count(addr)) return;
-
-    // Sanity check: must be in the ELF memory range
     if (!m_elf.vaddr_to_offset(addr)) return;
 
     Function func;
     func.start_addr = addr;
-    func.name = name.empty() ? ("func_" + [&]{ std::ostringstream os; os << std::hex << addr; return os.str(); }()) : name;
+    {
+        std::ostringstream os;
+        os << std::hex << addr;
+        func.name = name.empty() ? ("func_" + os.str()) : name;
+    }
 
     uint32_t end = find_function_end(addr);
     func.end_addr = end;
 
-    // Disassemble the function
     uint32_t pc = addr;
     bool hit_jr_ra = false;
 
@@ -54,21 +75,15 @@ void Recompiler::discover_function(uint32_t addr, const std::string& name) {
         auto instr = MIPSDisassembler::disassemble(*word_opt, pc);
         func.instructions.push_back(instr);
 
-        // Track call targets for further discovery
-        if (instr.mnemonic == "jal" && instr.branch_target != 0) {
+        if (instr.mnemonic == "jal" && instr.branch_target != 0)
             func.call_targets.push_back(instr.branch_target);
-        }
-        if (instr.is_branch() || instr.is_jump()) {
-            if (instr.branch_target != 0) {
-                func.jump_targets.push_back(instr.branch_target);
-            }
-        }
 
-        // JR $ra terminates function (after delay slot)
+        if ((instr.is_branch() || instr.is_jump()) && instr.branch_target != 0)
+            func.jump_targets.push_back(instr.branch_target);
+
         if (instr.mnemonic == "jr" && instr.rs == 31) {
             hit_jr_ra = true;
         } else if (hit_jr_ra) {
-            // This was the delay slot — done
             pc += 4;
             break;
         }
@@ -76,11 +91,6 @@ void Recompiler::discover_function(uint32_t addr, const std::string& name) {
     }
 
     m_functions[addr] = std::move(func);
-
-    // Recursively discover callees
-    for (uint32_t target : m_functions[addr].call_targets) {
-        discover_function(target);
-    }
 }
 
 uint32_t Recompiler::find_function_end(uint32_t start_addr) {
