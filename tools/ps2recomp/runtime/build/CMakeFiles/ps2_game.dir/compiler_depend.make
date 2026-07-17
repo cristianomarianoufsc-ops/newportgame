@@ -589,9 +589,13 @@ CMakeFiles/ps2_game.dir/src/host_main.cpp.o: /home/runner/workspace/tools/ps2rec
   /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/sys/ucontext.h \
   /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/unistd.h \
   /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/wchar.h \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/atomic \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bit \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/atomic_base.h \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/atomic_lockfree_defines.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/concept_check.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/cpp_type_traits.h \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/exception.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/exception_defines.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/functexcept.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/move.h \
@@ -621,6 +625,7 @@ CMakeFiles/ps2_game.dir/src/host_main.cpp.o: /home/runner/workspace/tools/ps2rec
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/ext/type_traits.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/limits \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/math.h \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/new \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/pstl/pstl_config.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/stdlib.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/tr1/bessel_function.tcc \
@@ -880,10 +885,124 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/stddef.h \
   /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/stdint.h
 
+ps2_game: /nix/store/0046rn5sgi6l38zl81bg2r02zlzxqqbc-libXext-1.3.6/lib/libXext.so.6 \
+  /nix/store/0mi5c946zyr7m6hy476g895wgs1y3g2z-libmpg123-1.32.10/lib/libmpg123.so.0 \
+  /nix/store/0py9xncsn0s6vqxhvqblvhs2cqbb30s8-libopus-1.5.2/lib/libopus.so.0 \
+  /nix/store/1nsvsrqp5zm96r9p3rrq3yhlyw8jiy91-libX11-1.8.12/lib/libX11.so.6 \
+  /nix/store/231d6mmkylzr80pf30dbywa9x9aryjgy-dbus-1.14.10-lib/lib/libdbus-1.so.3 \
+  /nix/store/2y2hhlki6macaj9j1409q1j6i33l6igf-libxcb-1.17.0/lib/libxcb.so.1 \
+  /nix/store/4r7vacgy5cvfcxj9h899b6iwf36chkix-libvorbis-1.3.7/lib/libvorbis.so.0 \
+  /nix/store/4r7vacgy5cvfcxj9h899b6iwf36chkix-libvorbis-1.3.7/lib/libvorbisenc.so.2 \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/crtbegin.o \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/crtend.o \
+  /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/libgcc.a \
+  /nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libEGL.so \
+  /nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libGL.so \
+  /nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libGLX.so \
+  /nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libGLdispatch.so.0 \
+  /nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libOpenGL.so \
+  /nix/store/7xv0lc4y7ixbpib2vxna7hd711qp9da2-glu-9.0.3/lib/libGLU.so \
+  /nix/store/91dcv6yfmlhs75q5fckc060j7fya06yv-openal-soft-1.24.2/lib/libopenal.so \
+  /nix/store/a6n62siyx22a3mcazn8lqvs19bfb0jq8-libpulseaudio-17.0/lib/libpulse.so.0 \
+  /nix/store/a6n62siyx22a3mcazn8lqvs19bfb0jq8-libpulseaudio-17.0/lib/pulseaudio/libpulsecommon-17.0.so \
+  /nix/store/ap3284zdwi033wsmc0wcp8ww2gf3bmha-pipewire-1.4.5/lib/libpipewire-0.3.so.0 \
+  /nix/store/az1wz2fh6y0j0simjsl2b58ksyrjdf71-sdl2-compat-2.32.56/lib/libSDL2.so \
+  /nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libatomic.so.1 \
+  /nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libgcc_s.so \
+  /nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libgcc_s.so.1 \
+  /nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libstdc++.so \
+  /nix/store/f8kjcizw0kmpyrn1abm1nfsbc007418g-libXau-1.0.12/lib/libXau.so.6 \
+  /nix/store/isflcljjzxfipwa1yrwlfdi53qk8kz81-libsndfile-1.2.2/lib/libsndfile.so.1 \
+  /nix/store/l86qg2nj2nv09218wpdnbvggqjxv254v-lame-3.100-lib/lib/libmp3lame.so.0 \
+  /nix/store/n4kqvn450iwdyj83q80is8ija3lfi2iw-systemd-minimal-257.6/lib/libsystemd.so.0 \
+  /nix/store/q2ps6hq2jr2xwvs60m39fnjrnsx94a3w-libcap-2.75-lib/lib/libcap.so.2 \
+  /nix/store/r69nqmkbi3z18aidf8l803df73z9zrrn-libogg-1.3.5/lib/libogg.so.0 \
+  /nix/store/sj9ac96a8xlk7mfbwnr86sd5mr6wh8ps-flac-1.5.0/lib/libFLAC.so.14 \
+  /nix/store/ycvsz2k1zqcg48as18fcb171rzfdn5ll-libXdmcp-1.1.5/lib/libXdmcp.so.6 \
+  /nix/store/yw5xqn8lqinrifm9ij80nrmf0i6fdcbx-alsa-lib-1.2.13/lib/libasound.so.2 \
+  /nix/store/ywxv6wj9pvbrhr7pxybp8plcyz79j34r-glew-2.2.0/lib/libGLEW.so.2.2.0 \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crt1.o \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crti.o \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crtn.o \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/ld-linux-x86-64.so.2 \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc.so \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc.so.6 \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc_nonshared.a \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libdl.so.2 \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libm.so \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libm.so.6 \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libmvec.so.1 \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libpthread.so \
+  /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/librt.so.1 \
+  CMakeFiles/ps2_game.dir/home/runner/workspace/tools/ps2recomp/build/output_runtime.c.o \
+  CMakeFiles/ps2_game.dir/src/bios_stub.cpp.o \
+  CMakeFiles/ps2_game.dir/src/gs_stub.cpp.o \
+  CMakeFiles/ps2_game.dir/src/host_main.cpp.o \
+  CMakeFiles/ps2_game.dir/src/ps2_runtime_data.c.o \
+  CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o
+
+
+CMakeFiles/ps2_game.dir/src/host_main.cpp.o:
+
+CMakeFiles/ps2_game.dir/src/bios_stub.cpp.o:
+
+CMakeFiles/ps2_game.dir/home/runner/workspace/tools/ps2recomp/build/output_runtime.c.o:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/librt.so.1:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc_nonshared.a:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc.so:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crtn.o:
+
+/nix/store/ywxv6wj9pvbrhr7pxybp8plcyz79j34r-glew-2.2.0/lib/libGLEW.so.2.2.0:
+
+/nix/store/q2ps6hq2jr2xwvs60m39fnjrnsx94a3w-libcap-2.75-lib/lib/libcap.so.2:
+
+/nix/store/n4kqvn450iwdyj83q80is8ija3lfi2iw-systemd-minimal-257.6/lib/libsystemd.so.0:
+
+/nix/store/l86qg2nj2nv09218wpdnbvggqjxv254v-lame-3.100-lib/lib/libmp3lame.so.0:
+
+/nix/store/isflcljjzxfipwa1yrwlfdi53qk8kz81-libsndfile-1.2.2/lib/libsndfile.so.1:
+
+/nix/store/f8kjcizw0kmpyrn1abm1nfsbc007418g-libXau-1.0.12/lib/libXau.so.6:
+
+/nix/store/az1wz2fh6y0j0simjsl2b58ksyrjdf71-sdl2-compat-2.32.56/lib/libSDL2.so:
+
+/nix/store/ap3284zdwi033wsmc0wcp8ww2gf3bmha-pipewire-1.4.5/lib/libpipewire-0.3.so.0:
+
+/nix/store/a6n62siyx22a3mcazn8lqvs19bfb0jq8-libpulseaudio-17.0/lib/libpulse.so.0:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libpthread.so:
+
+/nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libGLdispatch.so.0:
+
+/nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libGL.so:
+
+/nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/crtend.o:
+
+/nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/crtbegin.o:
+
+/nix/store/2y2hhlki6macaj9j1409q1j6i33l6igf-libxcb-1.17.0/lib/libxcb.so.1:
+
+/nix/store/231d6mmkylzr80pf30dbywa9x9aryjgy-dbus-1.14.10-lib/lib/libdbus-1.so.3:
+
+/nix/store/1nsvsrqp5zm96r9p3rrq3yhlyw8jiy91-libX11-1.8.12/lib/libX11.so.6:
+
+/nix/store/0py9xncsn0s6vqxhvqblvhs2cqbb30s8-libopus-1.5.2/lib/libopus.so.0:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/csignal:
 
+/nix/store/4r7vacgy5cvfcxj9h899b6iwf36chkix-libvorbis-1.3.7/lib/libvorbis.so.0:
+
+/nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/atomic_base.h:
+
+/nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/atomic:
+
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/unistd.h:
+
+/nix/store/a6n62siyx22a3mcazn8lqvs19bfb0jq8-libpulseaudio-17.0/lib/pulseaudio/libpulsecommon-17.0.so:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/struct_sigstack.h:
 
@@ -907,6 +1026,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/siginfo-arch.h:
 
+/nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libstdc++.so:
+
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/sigcontext.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/posix_opt.h:
@@ -914,6 +1035,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/getopt_core.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/confname.h:
+
+CMakeFiles/ps2_game.dir/src/gs_stub.cpp.o:
 
 /home/runner/workspace/tools/ps2recomp/runtime/src/host_main.cpp:
 
@@ -931,6 +1054,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_sensor.h:
 
+/nix/store/0046rn5sgi6l38zl81bg2r02zlzxqqbc-libXext-1.3.6/lib/libXext.so.6:
+
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_rect.h:
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_quit.h:
@@ -942,6 +1067,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_metal.h:
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_messagebox.h:
+
+/nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libgcc_s.so:
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_main.h:
 
@@ -962,6 +1089,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_config.h:
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_clipboard.h:
+
+/nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/libgcc.a:
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_audio.h:
 
@@ -985,7 +1114,11 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/wbnoinvdintrin.h:
 
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libdl.so.2:
+
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/waitpkgintrin.h:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libmvec.so.1:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/vpclmulqdqintrin.h:
 
@@ -1013,6 +1146,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/serializeintrin.h:
 
+/nix/store/r69nqmkbi3z18aidf8l803df73z9zrrn-libogg-1.3.5/lib/libogg.so.0:
+
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/rtmintrin.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/rdseedintrin.h:
@@ -1027,6 +1162,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/mwaitxintrin.h:
 
+CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o:
+
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/getopt_posix.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/mwaitintrin.h:
@@ -1036,6 +1173,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/cpp_type_traits.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/__sigset_t.h:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libm.so:
 
 /home/runner/workspace/tools/ps2recomp/runtime/src/spu2_stub.cpp:
 
@@ -1068,6 +1207,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/libm-simd-decl-stubs.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/fp-fast.h:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libm.so.6:
 
 /home/runner/workspace/tools/ps2recomp/runtime/include/ps2_gs_regs.h:
 
@@ -1103,6 +1244,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/ctime:
 
+/nix/store/ycvsz2k1zqcg48as18fcb171rzfdn5ll-libXdmcp-1.1.5/lib/libXdmcp.so.6:
+
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_rwops.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/time64.h:
@@ -1133,6 +1276,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/uintn-identity.h:
 
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crti.o:
+
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/unistd_ext.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/__locale_t.h:
@@ -1157,6 +1302,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/stdio_lim.h:
 
+/nix/store/sj9ac96a8xlk7mfbwnr86sd5mr6wh8ps-flac-1.5.0/lib/libFLAC.so.14:
+
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/functional_hash.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/stdint-least.h:
@@ -1164,6 +1311,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/unistd-decl.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/wchar2-decl.h:
+
+/nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libgcc_s.so.1:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/math-vector.h:
 
@@ -1182,6 +1331,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/sigset_t.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/avx512vpopcntdqintrin.h:
+
+/nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libOpenGL.so:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/libc-header-start.h:
 
@@ -1205,6 +1356,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/cstdint:
 
+/nix/store/7xv0lc4y7ixbpib2vxna7hd711qp9da2-glu-9.0.3/lib/libGLU.so:
+
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_thread.h:
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_mouse.h:
@@ -1212,6 +1365,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/x86_64-unknown-linux-gnu/bits/c++config.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/clzerointrin.h:
+
+/nix/store/91dcv6yfmlhs75q5fckc060j7fya06yv-openal-soft-1.24.2/lib/libopenal.so:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/stdint.h:
 
@@ -1243,6 +1398,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/wordsize.h:
 
+/nix/store/0mi5c946zyr7m6hy476g895wgs1y3g2z-libmpg123-1.32.10/lib/libmpg123.so.0:
+
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/struct_timespec.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/ctype.h:
@@ -1254,6 +1411,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/FILE.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/pstl/glue_algorithm_defs.h:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc.so.6:
 
 /home/runner/workspace/tools/ps2recomp/runtime/include/ps2_runtime.h:
 
@@ -1287,6 +1446,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/tr1/poly_laguerre.tcc:
 
+CMakeFiles/ps2_game.dir/src/ps2_runtime_data.c.o:
+
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/features-time64.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/avx512erintrin.h:
@@ -1308,6 +1469,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/time_t.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/avx512vldqintrin.h:
+
+/nix/store/bmi5znnqk4kg2grkrhk6py0irc8phf6l-gcc-14.2.1.20250322-lib/lib/libatomic.so.1:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types.h:
 
@@ -1341,11 +1504,15 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/stdlib.h:
 
+/nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libEGL.so:
+
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/clock_t.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/struct_tm.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/select2.h:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/crt1.o:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/tr1/poly_hermite.tcc:
 
@@ -1370,6 +1537,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/algorithmfwd.h:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/struct_rwlock.h:
+
+/nix/store/yw5xqn8lqinrifm9ij80nrmf0i6fdcbx-alsa-lib-1.2.13/lib/libasound.so.2:
 
 /nix/store/41pf3md9zgpda9kwh6rzn5kaddf7i0lp-glibc-2.40-66-dev/include/bits/types/cookie_io_functions_t.h:
 
@@ -1396,6 +1565,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/avx512vnnivlintrin.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/invoke.h:
+
+/nix/store/4r7vacgy5cvfcxj9h899b6iwf36chkix-libvorbis-1.3.7/lib/libvorbisenc.so.2:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/stl_pair.h:
 
@@ -1490,6 +1661,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_keycode.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/enqcmdintrin.h:
+
+/nix/store/7227amwg7k4sbl6mhglq17v5x5ki54ks-libglvnd-1.7.0/lib/libGLX.so:
 
 /nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2/SDL_guid.h:
 
@@ -1593,6 +1766,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/avx512vbmi2vlintrin.h:
 
+/nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/bits/atomic_lockfree_defines.h:
+
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/avx512vbmiintrin.h:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/avx512vbmivlintrin.h:
@@ -1624,6 +1799,8 @@ CMakeFiles/ps2_game.dir/src/spu2_stub.cpp.o: /home/runner/workspace/tools/ps2rec
 /home/runner/workspace/tools/ps2recomp/build/output_runtime.c:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1/include/cetintrin.h:
+
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/ld-linux-x86-64.so.2:
 
 /nix/store/6i862vz60awrlsila8vw18rg4d4l66iy-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/tr1/hypergeometric.tcc:
 
