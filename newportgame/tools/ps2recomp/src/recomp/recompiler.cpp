@@ -126,58 +126,12 @@ std::optional<uint32_t> Recompiler::fetch_word(uint32_t vaddr) const {
 // --- C code emission ---
 
 std::string Recompiler::emit_runtime_header() const {
-    return R"(// ps2recomp generated output — DO NOT EDIT
-// Compile with: gcc -O2 -o game this_file.c -lm
-// Requires: ps2_runtime.h (memory, GS stub, IOP stub)
+    return
+R"(// ps2recomp generated output — DO NOT EDIT
+// Standalone:  gcc -O2 -o game output.c -lm
+// With runtime: use patch_output.py then build via runtime/CMakeLists.txt
 
-#include <stdint.h>
-#include <string.h>
-
-// -----------------------------------------------------------------------
-// Register file
-// -----------------------------------------------------------------------
-typedef struct {
-    uint64_t r[32];   // GPRs (64-bit EE registers; upper 64 bits of 128-bit GPR ignored here)
-    uint64_t hi, lo;  // HI/LO multiply result
-    uint64_t hi1, lo1;
-    uint32_t pc;
-    uint32_t sa;      // Shift amount register
-    // FPU
-    float    f[32];
-    uint32_t fcr31;   // FPU control register
-} PS2Regs;
-
-// -----------------------------------------------------------------------
-// Memory
-// -----------------------------------------------------------------------
-// PS2 main RAM: 32 MB at 0x00000000
-// Scratchpad:    16 KB at 0x70000000
-static uint8_t ps2_ram[32 * 1024 * 1024];
-static uint8_t ps2_spr[16 * 1024];
-
-static inline uint8_t* ps2_mem_ptr(uint32_t addr) {
-    addr &= 0x1FFFFFFF; // Strip cache/kseg bits
-    if (addr < sizeof(ps2_ram)) return ps2_ram + addr;
-    if (addr >= 0x70000000 && addr < 0x70004000) return ps2_spr + (addr - 0x70000000);
-    return NULL; // I/O or unmapped
-}
-
-static inline uint32_t mem_read32(uint32_t addr)  { uint32_t v=0; uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(&v,p,4); return v; }
-static inline uint16_t mem_read16(uint32_t addr)  { uint16_t v=0; uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(&v,p,2); return v; }
-static inline uint8_t  mem_read8 (uint32_t addr)  { uint8_t*p=ps2_mem_ptr(addr); return p?*p:0; }
-static inline void mem_write32(uint32_t addr, uint32_t v)  { uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(p,&v,4); }
-static inline void mem_write16(uint32_t addr, uint16_t v)  { uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(p,&v,2); }
-static inline void mem_write8 (uint32_t addr, uint8_t v)   { uint8_t*p=ps2_mem_ptr(addr); if(p) *p=v; }
-
-// -----------------------------------------------------------------------
-// GS stub (Graphics Synthesizer -> OpenGL)
-// -----------------------------------------------------------------------
-void gs_write_reg(uint64_t reg, uint64_t value);  // Defined in gs_stub.c
-
-// -----------------------------------------------------------------------
-// Syscall stub
-// -----------------------------------------------------------------------
-void ps2_syscall(PS2Regs* regs, uint32_t code);   // Defined in bios_stub.c
+#include "ps2_runtime.h"
 
 )";
 }
@@ -394,13 +348,16 @@ bool Recompiler::emit_c(const std::string& output_path) {
         f << emit_function(func);
     }
 
-    // Emit main entry
-    f << "int main(void) {\n";
+    // Emit named game entry (called by host_main.cpp)
+    f << "// Game entry point — called by host_main.cpp\n";
+    f << "void ps2_game_start(void) {\n";
     f << "    PS2Regs regs = {0};\n";
-    f << "    // TODO: load ELF segments into ps2_ram here\n";
     f << "    func_" << std::hex << m_elf.entry_point << "(&regs);\n";
-    f << "    return 0;\n";
-    f << "}\n";
+    f << "}\n\n";
+    // Keep a standalone main for direct compilation (without runtime)
+    f << "#ifndef PS2_RECOMP_HAS_HOST\n";
+    f << "int main(void) { ps2_game_start(); return 0; }\n";
+    f << "#endif\n";
 
     std::cout << "[RECOMP] Wrote " << m_functions.size()
               << " functions to " << output_path << "\n";
