@@ -1,0 +1,26 @@
+# Build artifacts
+tools/ps2recomp/build/
+tools/ps2recomp/gow.iso
+
+# ISOs — too large for GitHub (8 GB)
+*.iso
+*.ISO
+
+# Generated recomp output (355K lines, regenerado rodando o tool)
+output.c
+*.c.out
+
+# Python / uv
+__pycache__/
+*.pyc
+.venv/
+uv.lock
+
+# Assets temporários
+attached_assets/
+
+# Replit internals
+.replit
+replit.nix
+main.py
+pyproject.toml
