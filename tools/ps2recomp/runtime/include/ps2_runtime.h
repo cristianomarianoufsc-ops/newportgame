@@ -109,3 +109,12 @@ void ps2_game_start(void);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
+
+/* -----------------------------------------------------------------------
+ * Headless mode flag
+ * Set to 1 before calling ps2_game_start() to suppress all GL/SDL calls.
+ * Defined in gs_stub.cpp, read by host_main.cpp and gs_stub.cpp.
+ * ----------------------------------------------------------------------- */
+#ifdef __cplusplus
+extern bool g_headless;
+#endif
