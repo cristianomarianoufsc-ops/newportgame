@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-modules = ["nodejs-24", "cpp-clang20"]
-=======
-modules = ["nodejs-24", "python-base-3.13"]
->>>>>>> 16656b6 (Update Replit configuration)
+modules = ["nodejs-24"]
 
 [deployment]
 router = "application"
@@ -22,6 +18,3 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
-
-[nix]
-channel = "stable-25_05"
