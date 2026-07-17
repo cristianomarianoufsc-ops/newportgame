@@ -183,7 +183,7 @@ void ps2_syscall(PS2Regs* regs, uint32_t code);   // Defined in bios_stub.c
 }
 
 std::string Recompiler::emit_instruction(const DecodedInstr& instr,
-                                          const Function& /*func*/) const
+                                          const Function& func) const
 {
     std::ostringstream out;
 
@@ -309,29 +309,52 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
         else if (instr.mnemonic == "move") out << "    " << R(instr.rd) << " = " << R(instr.rs == 0 ? instr.rt : instr.rs) << ";\n";
         else out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
-    case InstrCategory::BRANCH:
-        // Branches become goto labels; we emit them as conditional gotos
+    case InstrCategory::BRANCH: {
+        // For targets within this function → goto; outside → tail call + return
+        bool in_func = instr.branch_target != 0 &&
+                       instr.branch_target >= func.start_addr &&
+                       instr.branch_target <= func.end_addr;
+        auto GOTO = [&](const std::string& cond) {
+            if (in_func)
+                out << "    if (" << cond << ") goto L_" << std::hex << instr.branch_target << ";\n";
+            else
+                out << "    if (" << cond << ") { func_" << std::hex << instr.branch_target << "(regs); return; }\n";
+        };
+        auto GOTO_UNC = [&]() {
+            if (in_func)
+                out << "    goto L_" << std::hex << instr.branch_target << ";\n";
+            else
+                out << "    func_" << std::hex << instr.branch_target << "(regs); return;\n";
+        };
         if (instr.mnemonic == "beq" || instr.mnemonic == "beql")
-            out << "    if (" << R(instr.rs) << " == " << R(instr.rt) << ") goto L_" << std::hex << instr.branch_target << ";\n";
+            GOTO(R(instr.rs) + " == " + R(instr.rt));
         else if (instr.mnemonic == "bne" || instr.mnemonic == "bnel")
-            out << "    if (" << R(instr.rs) << " != " << R(instr.rt) << ") goto L_" << std::hex << instr.branch_target << ";\n";
+            GOTO(R(instr.rs) + " != " + R(instr.rt));
         else if (instr.mnemonic == "blez" || instr.mnemonic == "blezl")
-            out << "    if ((int32_t)" << R(instr.rs) << " <= 0) goto L_" << std::hex << instr.branch_target << ";\n";
+            GOTO("(int32_t)" + R(instr.rs) + " <= 0");
         else if (instr.mnemonic == "bgtz" || instr.mnemonic == "bgtzl")
-            out << "    if ((int32_t)" << R(instr.rs) << " > 0) goto L_" << std::hex << instr.branch_target << ";\n";
+            GOTO("(int32_t)" + R(instr.rs) + " > 0");
         else if (instr.mnemonic == "bgez" || instr.mnemonic == "bgezl")
-            out << "    if ((int32_t)" << R(instr.rs) << " >= 0) goto L_" << std::hex << instr.branch_target << ";\n";
+            GOTO("(int32_t)" + R(instr.rs) + " >= 0");
         else if (instr.mnemonic == "bltz" || instr.mnemonic == "bltzl")
-            out << "    if ((int32_t)" << R(instr.rs) << " < 0) goto L_" << std::hex << instr.branch_target << ";\n";
+            GOTO("(int32_t)" + R(instr.rs) + " < 0");
         else if (instr.mnemonic == "b")
-            out << "    goto L_" << std::hex << instr.branch_target << ";\n";
+            GOTO_UNC();
         else
             out << "    /* TODO branch: " << instr.mnemonic << " */\n";
         break;
+    }
     case InstrCategory::JUMP:
-        if (instr.mnemonic == "j")
-            out << "    goto L_" << std::hex << instr.branch_target << ";\n";
-        else if (instr.mnemonic == "jal")
+        if (instr.mnemonic == "j") {
+            // Unconditional jump — tail call if outside function bounds
+            bool in_func_j = instr.branch_target != 0 &&
+                             instr.branch_target >= func.start_addr &&
+                             instr.branch_target <= func.end_addr;
+            if (in_func_j)
+                out << "    goto L_" << std::hex << instr.branch_target << ";\n";
+            else
+                out << "    func_" << std::hex << instr.branch_target << "(regs); return;\n";
+        } else if (instr.mnemonic == "jal")
             out << "    regs->r[31] = 0x" << std::hex << (instr.pc + 8) << "u; /* ra */ func_" << std::hex << instr.branch_target << "(regs);\n";
         else if (instr.mnemonic == "jr")
             out << "    return; /* jr " << "r" << (int)instr.rs << " */\n";
@@ -357,8 +380,12 @@ std::string Recompiler::emit_function(const Function& func) const {
         << " - 0x" << func.end_addr << "]\n";
     out << "void func_" << std::hex << func.start_addr << "(PS2Regs* regs) {\n";
 
-    // Emit label for every instruction address (needed for goto targets)
-    std::set<uint32_t> label_addrs(func.jump_targets.begin(), func.jump_targets.end());
+    // Only emit labels for targets that are within this function's bounds
+    std::set<uint32_t> label_addrs;
+    for (uint32_t t : func.jump_targets) {
+        if (t >= func.start_addr && t <= func.end_addr)
+            label_addrs.insert(t);
+    }
 
     for (const auto& instr : func.instructions) {
         // Emit label if this address is a branch target
@@ -382,24 +409,58 @@ bool Recompiler::emit_c(const std::string& output_path) {
 
     f << emit_runtime_header();
 
-    // Forward-declare all functions
+    // Collect all cross-function call targets (tail-calls + jal) that were
+    // not discovered by the BFS — will be emitted as stubs after fwd decls.
+    std::set<uint32_t> stub_addrs;
+    for (auto& [addr, func] : m_functions) {
+        for (const auto& instr : func.instructions) {
+            uint32_t tgt = instr.branch_target;
+            if (tgt == 0) continue;
+            bool is_cross_call =
+                (instr.mnemonic == "jal") ||
+                ((instr.is_branch() || instr.mnemonic == "j") &&
+                 (tgt < func.start_addr || tgt > func.end_addr));
+            if (is_cross_call && m_functions.find(tgt) == m_functions.end()) {
+                stub_addrs.insert(tgt);
+            }
+        }
+    }
+
+    // Forward-declare all discovered functions
+    // NOTE: patch_output.py uses this marker — keep it here.
     f << "// Forward declarations\n";
     for (auto& [addr, func] : m_functions) {
         f << "void func_" << std::hex << addr << "(PS2Regs* regs);\n";
     }
+    // Also forward-declare stubs so functions can call them before definition
+    for (uint32_t sa : stub_addrs) {
+        f << "void func_" << std::hex << sa << "(PS2Regs* regs);\n";
+    }
     f << "\n";
+
+    // Stubs for undiscovered/out-of-range call targets (after fwd decls so
+    // patch_output.py doesn't strip them — it only strips up to "// Forward declarations")
+    if (!stub_addrs.empty()) {
+        f << "// --- Stubs for undiscovered/out-of-range call targets ---\n";
+        for (uint32_t sa : stub_addrs) {
+            f << "void func_" << std::hex << sa
+              << "(PS2Regs* regs) { (void)regs; /* stub: addr not in ELF */ }\n";
+        }
+        f << "\n";
+        std::cout << "[RECOMP] Emitted " << stub_addrs.size()
+                  << " stubs for undiscovered functions\n";
+    }
 
     // Emit each function
     for (auto& [addr, func] : m_functions) {
         f << emit_function(func);
     }
 
-    // Emit main entry
-    f << "int main(void) {\n";
+    // Emit named game entry (called by host_main.cpp)
+    f << "// Game entry point — called by host_main.cpp\n";
+    f << "void ps2_game_start(void) {\n";
     f << "    PS2Regs regs = {0};\n";
-    f << "    // TODO: load ELF segments into ps2_ram here\n";
     f << "    func_" << std::hex << m_elf.entry_point << "(&regs);\n";
-    f << "    return 0;\n";
     f << "}\n";
 
     std::cout << "[RECOMP] Wrote " << m_functions.size()
