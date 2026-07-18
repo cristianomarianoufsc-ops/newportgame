@@ -89,7 +89,12 @@ static uint32_t g_heap_size = 0;
 // -----------------------------------------------------------------------
 // ps2_syscall — called by generated SYSCALL instructions in output.c
 // -----------------------------------------------------------------------
-extern "C" void ps2_syscall(PS2Regs* regs, uint32_t code) {
+extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
+    // PS2 EE convention: real syscall number is in $v1 (r3).
+    // Games use either positive r3=N or negative r3=-N (two's complement).
+    int32_t r3 = (int32_t)(uint32_t)regs->r[3];
+    uint32_t code = (r3 < 0) ? (uint32_t)(-r3) : (uint32_t)r3;
+
     ++g_syscall_total;
     g_syscall_counts[code]++;
 

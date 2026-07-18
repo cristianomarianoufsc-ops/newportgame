@@ -501,14 +501,33 @@ std::string Recompiler::emit_function(const Function& func) const {
             label_addrs.insert(t);
     }
 
-    for (const auto& instr : func.instructions) {
-        // Emit label if this address is a branch target
-        if (label_addrs.count(instr.pc)) {
-            out << "L_" << std::hex << instr.pc << ":\n";
-        }
-        // $zero is always 0 — enforce it
+    // MIPS has branch delay slots: the instruction AFTER a branch/jump
+    // always executes, regardless of whether the branch is taken.
+    // We emit the delay slot instruction BEFORE the branch, then skip it.
+    auto emit_one = [&](const DecodedInstr& i) {
+        if (label_addrs.count(i.pc))
+            out << "L_" << std::hex << i.pc << ":\n";
         out << "    regs->r[0] = 0;\n";
-        out << emit_instruction(instr, func);
+        out << emit_instruction(i, func);
+    };
+
+    const auto& instrs = func.instructions;
+    for (size_t i = 0; i < instrs.size(); ++i) {
+        const auto& instr = instrs[i];
+        bool has_ds = (instr.is_branch() || instr.is_jump())
+                      && (i + 1 < instrs.size());
+        if (has_ds) {
+            // Emit delay slot FIRST (it always executes)
+            emit_one(instrs[i + 1]);
+            // Then emit the branch/jump
+            if (label_addrs.count(instr.pc))
+                out << "L_" << std::hex << instr.pc << ":\n";
+            out << "    regs->r[0] = 0;\n";
+            out << emit_instruction(instr, func);
+            ++i;  // skip delay slot in next iteration
+        } else {
+            emit_one(instr);
+        }
     }
     out << "}\n\n";
     return out.str();
