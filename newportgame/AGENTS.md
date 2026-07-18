@@ -1,0 +1,129 @@
+# AGENTS.md — Leitura obrigatória para agentes
+
+Este documento descreve as ferramentas disponíveis neste projeto e como usá-las.
+**Todo agente que abrir este repositório deve ler este arquivo antes de trabalhar.**
+
+---
+
+## Objetivo do projeto
+
+Port nativo de PS2 para PC via recompilação estática.
+Fluxo principal: ISO de PS2 → executável MIPS extraído → traduzido para C → compilado para x86-64.
+
+---
+
+## ⚙️ Ferramentas OBRIGATÓRIAS
+
+Sem estas ferramentas o fluxo principal não funciona. Sempre verifique que estão disponíveis antes de qualquer outra coisa.
+
+### `tools/ps2recomp/build.sh` — compilar o recompilador
+
+Compila o binário `ps2recomp` que processa a ISO e gera o `output.c`.
+Requer: `cmake`, `g++`, `make`.
+
+```bash
+bash tools/ps2recomp/build.sh
+# Gera: tools/ps2recomp/build/ps2recomp
+```
+
+**Dependências no ambiente NixOS (Replit):**
+- `g++` e `make` já estão no PATH
+- `cmake`: instalar com `nix-env -iA nixpkgs.cmake` se não disponível
+
+---
+
+### `tools/ps2recomp/runtime/patch_output.py` — preparar output para o runtime
+
+Transforma o `output.c` bruto do recompilador em `output_runtime.c`, pronto para compilar com o runtime nativo.
+Sem este passo o output.c **não compila** junto com o runtime.
+
+O que faz:
+- Substitui o header inline por `#include "ps2_runtime.h"`
+- Renomeia `int main(void)` → `void ps2_game_start(void)`
+
+```bash
+python3 tools/ps2recomp/runtime/patch_output.py build/output.c
+# Gera: build/output_runtime.c
+```
+
+---
+
+## 🔧 Ferramentas PONTUAIS
+
+Úteis para análise e diagnóstico, mas não bloqueiam o fluxo principal. Use quando precisar de informação específica.
+
+### `tools/ps2recomp/find_loops.py` — detectar loops no output.c
+
+Identifica funções com backward gotos (loops). Útil para priorizar quais funções precisam de tratamento especial no port.
+
+```bash
+# Top 30 funções com mais loops
+python3 tools/ps2recomp/find_loops.py build/output.c
+
+# Detalhe de uma função específica
+python3 tools/ps2recomp/find_loops.py build/output.c --func func_001f0000
+
+# Filtrar por mínimo de loops
+python3 tools/ps2recomp/find_loops.py build/output.c --min-back 3 --top 50
+```
+
+**Quando usar:** ao iniciar trabalho em uma nova função ou antes de decidir por qual função começar o port.
+
+---
+
+### `tools/ps2recomp/runtime/recomp_stats.py` — estatísticas do output.c
+
+Visão geral do que foi gerado: total de funções, instruções por categoria, TODOs pendentes, maiores funções.
+
+```bash
+python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
+```
+
+**Quando usar:** após gerar um novo `output.c` para entender o tamanho e complexidade do trabalho à frente.
+
+---
+
+## Fluxo completo de recompilação
+
+```
+1. Compilar o recompilador (obrigatório, uma vez):
+   bash tools/ps2recomp/build.sh
+
+2. Rodar na ISO (obrigatório):
+   cd tools/ps2recomp/build
+   ./ps2recomp recomp "God of War (USA).iso" output.c
+
+3. [PONTUAL] Ver estatísticas do que foi gerado:
+   python3 ../runtime/recomp_stats.py output.c
+
+4. [PONTUAL] Identificar funções com loops:
+   python3 ../find_loops.py output.c
+
+5. Preparar para o runtime (obrigatório):
+   python3 ../runtime/patch_output.py output.c
+   # Gera output_runtime.c
+```
+
+---
+
+## Ambiente
+
+- **Sistema:** NixOS (Replit) — não usar `apt`. Usar `nix-env` ou o skill de pacotes do Replit.
+- **Python:** 3.12 instalado (`python3` disponível no PATH) — nenhum pacote externo necessário
+- **g++ / make:** disponíveis no PATH
+- **cmake:** instalar via `nix-env -iA nixpkgs.cmake` se ausente
+- **ISO:** `tools/ps2recomp/build/God of War (USA).iso` (8.52 GB — não versionada no git)
+
+---
+
+## Roadmap do port
+
+- [x] ISO 9660 parser
+- [x] ELF32 MIPS loader
+- [x] Disassembler MIPS R5900
+- [x] Recompilador estático MIPS → C
+- [ ] Stub do Graphics Synthesizer (GS) → OpenGL
+- [ ] Stub do IOP/BIOS (syscalls do PS2)
+- [ ] Stub do SPU2 (áudio → OpenAL)
+- [ ] Dispatch indireto (`jalr` — chamadas por ponteiro)
+- [ ] Instruções MMI e VU0 (operações vetoriais)

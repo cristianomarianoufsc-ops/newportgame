@@ -1,45 +1,45 @@
-# [Project name]
+# Newport Game — PS2 Static Recompiler Port
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Port nativo de PS2 para PC via recompilação estática de MIPS R5900 → C → x86-64.
+
+> **Agentes: leia `AGENTS.md` antes de trabalhar neste projeto.**
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `bash tools/ps2recomp/build.sh` — compilar o recompilador (requer cmake + g++ + make)
+- `cd tools/ps2recomp/build && ./ps2recomp recomp "God of War (USA).iso" output.c` — rodar recompilação
+- `python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c` — ver estatísticas do output
+- `python3 tools/ps2recomp/find_loops.py build/output.c` — identificar funções com loops
+- `python3 tools/ps2recomp/runtime/patch_output.py build/output.c` — preparar para o runtime
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Recompilador: C++ (CMake), targets x86-64 Linux
+- Python 3.12 — ferramentas de análise e pós-processamento
+- pnpm workspaces, Node.js 24, TypeScript 5.9 (infraestrutura web)
 
-## Where things live
+## Ferramentas Python (ver `AGENTS.md` para detalhes)
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+| Arquivo | Função |
+|---|---|
+| `tools/ps2recomp/find_loops.py` | Detecta loops (backward gotos) no output.c |
+| `tools/ps2recomp/runtime/patch_output.py` | Prepara output.c para compilar com o runtime |
+| `tools/ps2recomp/runtime/recomp_stats.py` | Estatísticas do output.c gerado |
 
-## Architecture decisions
+## Ambiente
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Sistema: NixOS (Replit) — não usar `apt`
+- Python 3.12 instalado (`python3` disponível)
+- cmake: instalar via `nix-env -iA nixpkgs.cmake` se necessário
+- ISO do jogo: não versionada no git (8.52 GB)
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Não rodar `apt install` — o ambiente é NixOS, usar `nix-env` ou skill de pacotes do Replit
+- A ISO não está no git (`.gitignore`) — precisa ser baixada separadamente
+- `cmake` pode não estar no PATH após instalar via `nix-env`; verificar com `which cmake`
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Ver `AGENTS.md` para fluxo completo e documentação das ferramentas Python
+- Ver `tools/ps2recomp/README.md` para detalhes do recompilador
