@@ -88,6 +88,16 @@ static inline void mem_write8(uint32_t addr, uint8_t v) {
     uint8_t* p = ps2_mem_ptr(addr);
     if (p) *p = v;
 }
+static inline uint64_t mem_read64(uint32_t addr) {
+    uint64_t v = 0;
+    uint8_t* p = ps2_mem_ptr(addr);
+    if (p) memcpy(&v, p, 8);
+    return v;
+}
+static inline void mem_write64(uint32_t addr, uint64_t v) {
+    uint8_t* p = ps2_mem_ptr(addr);
+    if (p) memcpy(p, &v, 8);
+}
 
 /* -----------------------------------------------------------------------
  * Runtime entry points (implemented in runtime/src/)

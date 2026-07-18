@@ -52,6 +52,34 @@ python3 tools/ps2recomp/runtime/patch_output.py build/output.c
 
 Úteis para análise e diagnóstico, mas não bloqueiam o fluxo principal. Use quando precisar de informação específica.
 
+### `tools/ps2recomp/check_todos.py` — o que ainda falta implementar no recompilador
+
+Varre o `output.c` e lista todos os mnemonics que ainda geram `/* TODO */` ou `/* UNHANDLED */`, com contagem e categoria. **Use isso logo após gerar um novo output.c para saber o que priorizar a seguir.**
+
+```bash
+# Visão geral com categorias
+python3 tools/ps2recomp/check_todos.py build/output.c --category
+
+# Só o que aparece >= 100 vezes
+python3 tools/ps2recomp/check_todos.py build/output.c --min 100
+```
+
+---
+
+### `tools/ps2recomp/jalr_targets.py` — analisar padrões de dispatch indireto (jalr)
+
+Analisa todos os call sites de `jalr` no `output.c`: tenta resolver o registrador fonte por data-flow simples, detecta funções atingidas só via jalr e separa os call sites dinâmicos (não resolvíveis) dos estáticos. **Use quando o jogo travar em dispatch indireto.**
+
+```bash
+# Visão geral — top 30 funções com mais jalr
+python3 tools/ps2recomp/jalr_targets.py build/output.c
+
+# Focar nos call sites não resolvíveis (jalr via registrador dinâmico)
+python3 tools/ps2recomp/jalr_targets.py build/output.c --unresolved --top 20
+```
+
+---
+
 ### `tools/ps2recomp/find_loops.py` — detectar loops no output.c
 
 Identifica funções com backward gotos (loops). Útil para priorizar quais funções precisam de tratamento especial no port.
