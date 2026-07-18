@@ -1,0 +1,1 @@
+- [PS2 Recompiler — GoW1 status](ps2recomp-status.md) — binário compila limpo; loop infinito por jalr/ld/sd não implementados no recompilador

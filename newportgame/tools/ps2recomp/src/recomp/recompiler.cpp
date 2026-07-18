@@ -126,65 +126,18 @@ std::optional<uint32_t> Recompiler::fetch_word(uint32_t vaddr) const {
 // --- C code emission ---
 
 std::string Recompiler::emit_runtime_header() const {
-    return R"(// ps2recomp generated output — DO NOT EDIT
-// Compile with: gcc -O2 -o game this_file.c -lm
-// Requires: ps2_runtime.h (memory, GS stub, IOP stub)
+    return
+R"(// ps2recomp generated output — DO NOT EDIT
+// Standalone:  gcc -O2 -o game output.c -lm
+// With runtime: use patch_output.py then build via runtime/CMakeLists.txt
 
-#include <cmath>
-#include <stdint.h>
-#include <string.h>
-
-// -----------------------------------------------------------------------
-// Register file
-// -----------------------------------------------------------------------
-typedef struct {
-    uint64_t r[32];   // GPRs (64-bit EE registers; upper 64 bits of 128-bit GPR ignored here)
-    uint64_t hi, lo;  // HI/LO multiply result
-    uint64_t hi1, lo1;
-    uint32_t pc;
-    uint32_t sa;      // Shift amount register
-    // FPU
-    float    f[32];
-    uint32_t fcr31;   // FPU control register
-} PS2Regs;
-
-// -----------------------------------------------------------------------
-// Memory
-// -----------------------------------------------------------------------
-// PS2 main RAM: 32 MB at 0x00000000
-// Scratchpad:    16 KB at 0x70000000
-static uint8_t ps2_ram[32 * 1024 * 1024];
-static uint8_t ps2_spr[16 * 1024];
-
-static inline uint8_t* ps2_mem_ptr(uint32_t addr) {
-    addr &= 0x1FFFFFFF; // Strip cache/kseg bits
-    if (addr < sizeof(ps2_ram)) return ps2_ram + addr;
-    if (addr >= 0x70000000 && addr < 0x70004000) return ps2_spr + (addr - 0x70000000);
-    return NULL; // I/O or unmapped
-}
-
-static inline uint32_t mem_read32(uint32_t addr)  { uint32_t v=0; uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(&v,p,4); return v; }
-static inline uint16_t mem_read16(uint32_t addr)  { uint16_t v=0; uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(&v,p,2); return v; }
-static inline uint8_t  mem_read8 (uint32_t addr)  { uint8_t*p=ps2_mem_ptr(addr); return p?*p:0; }
-static inline void mem_write32(uint32_t addr, uint32_t v)  { uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(p,&v,4); }
-static inline void mem_write16(uint32_t addr, uint16_t v)  { uint8_t*p=ps2_mem_ptr(addr); if(p) memcpy(p,&v,2); }
-static inline void mem_write8 (uint32_t addr, uint8_t v)   { uint8_t*p=ps2_mem_ptr(addr); if(p) *p=v; }
-
-// -----------------------------------------------------------------------
-// GS stub (Graphics Synthesizer -> OpenGL)
-// -----------------------------------------------------------------------
-void gs_write_reg(uint64_t reg, uint64_t value);  // Defined in gs_stub.c
-
-// -----------------------------------------------------------------------
-// Syscall stub
-// -----------------------------------------------------------------------
-void ps2_syscall(PS2Regs* regs, uint32_t code);   // Defined in bios_stub.c
+#include "ps2_runtime.h"
 
 )";
 }
 
 std::string Recompiler::emit_instruction(const DecodedInstr& instr,
-                                          const Function& func) const
+                                          const Function& /*func*/) const
 {
     std::ostringstream out;
 
@@ -192,7 +145,7 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
         out << "    // " << instr.to_string() << "\n";
     }
     if (m_opts.emit_pc_tracking) {
-        out << "    regs->pc = 0x" << std::hex << instr.pc << std::dec << "u;\n";
+        out << "    regs->pc = 0x" << std::hex << instr.pc << "u;\n";
     }
 
     auto R  = [](uint8_t r) -> std::string { return "regs->r[" + std::to_string(r) + "]"; };
@@ -242,25 +195,6 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    " << R(instr.rt) << " = ((int32_t)" << R(instr.rs) << " < " << SE(instr.imm) << ") ? 1 : 0;\n";
         else if (instr.mnemonic == "sltiu")
             out << "    " << R(instr.rt) << " = ((uint32_t)" << R(instr.rs) << " < (uint32_t)" << SE(instr.imm) << ") ? 1 : 0;\n";
-        // 64-bit ALU (EE MIPS III)
-        else if (instr.mnemonic == "daddu")
-            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " + " << R(instr.rt) << ";\n";
-        else if (instr.mnemonic == "dsubu" || instr.mnemonic == "dsub")
-            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " - " << R(instr.rt) << ";\n";
-        else if (instr.mnemonic == "daddi" || instr.mnemonic == "daddiu")
-            out << "    " << R(instr.rt) << " = " << R(instr.rs) << " + (int64_t)(int16_t)(" << SE(instr.imm) << ");\n";
-        // Conditional moves
-        else if (instr.mnemonic == "movz")
-            out << "    if (" << R(instr.rt) << " == 0) " << R(instr.rd) << " = " << R(instr.rs) << ";\n";
-        else if (instr.mnemonic == "movn")
-            out << "    if (" << R(instr.rt) << " != 0) " << R(instr.rd) << " = " << R(instr.rs) << ";\n";
-        // 64-bit variable shifts (SPECIAL encoding, end up as ALU)
-        else if (instr.mnemonic == "dsllv")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << (" << R(instr.rs) << " & 63u);\n";
-        else if (instr.mnemonic == "dsrlv")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " >> (" << R(instr.rs) << " & 63u);\n";
-        else if (instr.mnemonic == "dsrav")
-            out << "    " << R(instr.rd) << " = (uint64_t)((int64_t)" << R(instr.rt) << " >> (" << R(instr.rs) << " & 63u));\n";
         else
             out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
@@ -278,19 +212,6 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    " << R(instr.rd) << " = (uint32_t)((uint32_t)" << R(instr.rt) << " >> (" << R(instr.rs) << " & 31));\n";
         else if (instr.mnemonic == "srav")
             out << "    " << R(instr.rd) << " = (uint32_t)((int32_t)" << R(instr.rt) << " >> (" << R(instr.rs) << " & 31));\n";
-        // 64-bit immediate shifts
-        else if (instr.mnemonic == "dsll")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << " << (int)instr.shamt << "u;\n";
-        else if (instr.mnemonic == "dsrl")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " >> " << (int)instr.shamt << "u;\n";
-        else if (instr.mnemonic == "dsra")
-            out << "    " << R(instr.rd) << " = (uint64_t)((int64_t)" << R(instr.rt) << " >> " << (int)instr.shamt << ");\n";
-        else if (instr.mnemonic == "dsll32")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << " << (int)(instr.shamt + 32) << "u;\n";
-        else if (instr.mnemonic == "dsrl32")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " >> " << (int)(instr.shamt + 32) << "u;\n";
-        else if (instr.mnemonic == "dsra32")
-            out << "    " << R(instr.rd) << " = (uint64_t)((int64_t)" << R(instr.rt) << " >> " << (int)(instr.shamt + 32) << ");\n";
         else
             out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
@@ -305,18 +226,6 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    " << R(instr.rt) << " = (int32_t)(int8_t)mem_read8((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "));\n";
         else if (instr.mnemonic == "lbu")
             out << "    " << R(instr.rt) << " = mem_read8((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "));\n";
-        // 64-bit load (ld)
-        else if (instr.mnemonic == "ld")
-            out << "    " << R(instr.rt) << " = mem_read64((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "));\n";
-        // FPU load (lwc1: ft=rt field, rs=base)
-        else if (instr.mnemonic == "lwc1")
-            out << "    { uint32_t _fv = mem_read32((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << ")); memcpy(&regs->f[" << (int)instr.rt << "], &_fv, 4); }\n";
-        // 128-bit load (lq) — load lower 64 bits, upper 64 ignored
-        else if (instr.mnemonic == "lq")
-            out << "    " << R(instr.rt) << " = mem_read64((uint32_t)((" << R(instr.rs) << " + " << SE(instr.imm) << ") & ~15u));\n";
-        // load word unsigned (zero-extend)
-        else if (instr.mnemonic == "lwu")
-            out << "    " << R(instr.rt) << " = (uint64_t)(uint32_t)mem_read32((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "));\n";
         else
             out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
@@ -327,15 +236,6 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    mem_write16((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), (uint16_t)" << R(instr.rt) << ");\n";
         else if (instr.mnemonic == "sb")
             out << "    mem_write8((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), (uint8_t)" << R(instr.rt) << ");\n";
-        // 64-bit store (sd)
-        else if (instr.mnemonic == "sd")
-            out << "    mem_write64((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), " << R(instr.rt) << ");\n";
-        // FPU store (swc1: ft=rt field)
-        else if (instr.mnemonic == "swc1")
-            out << "    { uint32_t _fv; memcpy(&_fv, &regs->f[" << (int)instr.rt << "], 4); mem_write32((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), _fv); }\n";
-        // 128-bit store (sq) — store lower 64 bits
-        else if (instr.mnemonic == "sq")
-            out << "    mem_write64((uint32_t)((" << R(instr.rs) << " + " << SE(instr.imm) << ") & ~15u), " << R(instr.rt) << ");\n";
         else
             out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
@@ -363,123 +263,40 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
         else if (instr.mnemonic == "move") out << "    " << R(instr.rd) << " = " << R(instr.rs == 0 ? instr.rt : instr.rs) << ";\n";
         else out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
-    case InstrCategory::BRANCH: {
-        // For targets within this function → goto; outside → tail call + return
-        bool in_func = instr.branch_target != 0 &&
-                       instr.branch_target >= func.start_addr &&
-                       instr.branch_target <= func.end_addr;
-        auto GOTO = [&](const std::string& cond) {
-            if (in_func)
-                out << "    if (" << cond << ") goto L_" << std::hex << instr.branch_target << ";\n";
-            else
-                out << "    if (" << cond << ") { func_" << std::hex << instr.branch_target << "(regs); return; }\n";
-        };
-        auto GOTO_UNC = [&]() {
-            if (in_func)
-                out << "    goto L_" << std::hex << instr.branch_target << ";\n";
-            else
-                out << "    func_" << std::hex << instr.branch_target << "(regs); return;\n";
-        };
+    case InstrCategory::BRANCH:
+        // Branches become goto labels; we emit them as conditional gotos
         if (instr.mnemonic == "beq" || instr.mnemonic == "beql")
-            GOTO(R(instr.rs) + " == " + R(instr.rt));
+            out << "    if (" << R(instr.rs) << " == " << R(instr.rt) << ") goto L_" << std::hex << instr.branch_target << ";\n";
         else if (instr.mnemonic == "bne" || instr.mnemonic == "bnel")
-            GOTO(R(instr.rs) + " != " + R(instr.rt));
+            out << "    if (" << R(instr.rs) << " != " << R(instr.rt) << ") goto L_" << std::hex << instr.branch_target << ";\n";
         else if (instr.mnemonic == "blez" || instr.mnemonic == "blezl")
-            GOTO("(int32_t)" + R(instr.rs) + " <= 0");
+            out << "    if ((int32_t)" << R(instr.rs) << " <= 0) goto L_" << std::hex << instr.branch_target << ";\n";
         else if (instr.mnemonic == "bgtz" || instr.mnemonic == "bgtzl")
-            GOTO("(int32_t)" + R(instr.rs) + " > 0");
+            out << "    if ((int32_t)" << R(instr.rs) << " > 0) goto L_" << std::hex << instr.branch_target << ";\n";
         else if (instr.mnemonic == "bgez" || instr.mnemonic == "bgezl")
-            GOTO("(int32_t)" + R(instr.rs) + " >= 0");
+            out << "    if ((int32_t)" << R(instr.rs) << " >= 0) goto L_" << std::hex << instr.branch_target << ";\n";
         else if (instr.mnemonic == "bltz" || instr.mnemonic == "bltzl")
-            GOTO("(int32_t)" + R(instr.rs) + " < 0");
+            out << "    if ((int32_t)" << R(instr.rs) << " < 0) goto L_" << std::hex << instr.branch_target << ";\n";
         else if (instr.mnemonic == "b")
-            GOTO_UNC();
-        else if (instr.mnemonic == "bc1t" || instr.mnemonic == "bc1tl")
-            GOTO("regs->fcr31 & 0x00800000u");
-        else if (instr.mnemonic == "bc1f" || instr.mnemonic == "bc1fl")
-            GOTO("!(regs->fcr31 & 0x00800000u)");
-        else if (instr.mnemonic == "bgezal" || instr.mnemonic == "bgezall") {
-            out << "    regs->r[31] = 0x" << std::hex << (instr.pc + 8) << "u;\n";
-            GOTO("(int32_t)" + R(instr.rs) + " >= 0");
-        } else if (instr.mnemonic == "bltzal" || instr.mnemonic == "bltzall") {
-            out << "    regs->r[31] = 0x" << std::hex << (instr.pc + 8) << "u;\n";
-            GOTO("(int32_t)" + R(instr.rs) + " < 0");
-        } else
+            out << "    goto L_" << std::hex << instr.branch_target << ";\n";
+        else
             out << "    /* TODO branch: " << instr.mnemonic << " */\n";
         break;
-    }
     case InstrCategory::JUMP:
-        if (instr.mnemonic == "j") {
-            // Unconditional jump — tail call if outside function bounds
-            bool in_func_j = instr.branch_target != 0 &&
-                             instr.branch_target >= func.start_addr &&
-                             instr.branch_target <= func.end_addr;
-            if (in_func_j)
-                out << "    goto L_" << std::hex << instr.branch_target << ";\n";
-            else
-                out << "    func_" << std::hex << instr.branch_target << "(regs); return;\n";
-        } else if (instr.mnemonic == "jal")
+        if (instr.mnemonic == "j")
+            out << "    goto L_" << std::hex << instr.branch_target << ";\n";
+        else if (instr.mnemonic == "jal")
             out << "    regs->r[31] = 0x" << std::hex << (instr.pc + 8) << "u; /* ra */ func_" << std::hex << instr.branch_target << "(regs);\n";
         else if (instr.mnemonic == "jr")
             out << "    return; /* jr " << "r" << (int)instr.rs << " */\n";
         else if (instr.mnemonic == "jalr")
-            out << "    regs->r[" << (int)instr.rd << "] = 0x" << std::hex << (instr.pc + 8) << "u; ps2_dispatch(regs, (uint32_t)" << R(instr.rs) << ");\n";
+            out << "    /* indirect call via " << R(instr.rs) << " — TODO dynamic dispatch */\n";
         else
             out << "    /* TODO jump: " << instr.mnemonic << " */\n";
         break;
     case InstrCategory::SYSCALL:
         out << "    ps2_syscall(regs, 0x" << std::hex << ((instr.raw >> 6) & 0xfffff) << "u);\n";
         break;
-    case InstrCategory::FLOAT: {
-        // COP1 field layout: fd=shamt[10:6], fs=rd[15:11], ft=rt[20:16]
-        // mtc1/mfc1 layout: GPR=rt[20:16], FPU=rd[15:11]
-        auto FD = [&]() { return "regs->f[" + std::to_string(instr.shamt) + "]"; };
-        auto FS = [&]() { return "regs->f[" + std::to_string(instr.rd) + "]"; };
-        auto FT = [&]() { return "regs->f[" + std::to_string(instr.rt) + "]"; };
-        if (instr.mnemonic == "add.s")
-            out << "    " << FD() << " = " << FS() << " + " << FT() << ";\n";
-        else if (instr.mnemonic == "sub.s")
-            out << "    " << FD() << " = " << FS() << " - " << FT() << ";\n";
-        else if (instr.mnemonic == "mul.s")
-            out << "    " << FD() << " = " << FS() << " * " << FT() << ";\n";
-        else if (instr.mnemonic == "div.s")
-            out << "    if (" << FT() << " != 0.0f) " << FD() << " = " << FS() << " / " << FT() << ";\n";
-        else if (instr.mnemonic == "mov.s" || instr.mnemonic == "mov.d")
-            out << "    " << FD() << " = " << FS() << ";\n";
-        else if (instr.mnemonic == "abs.s")
-            out << "    " << FD() << " = fabsf(" << FS() << ");\n";
-        else if (instr.mnemonic == "neg.s")
-            out << "    " << FD() << " = -" << FS() << ";\n";
-        else if (instr.mnemonic == "sqrt.s")
-            out << "    " << FD() << " = sqrtf(" << FS() << ");\n";
-        else if (instr.mnemonic == "cvt.s.w") {
-            // fd = (float)(int32_t bits of fs)
-            out << "    { int32_t _iv; memcpy(&_iv, &" << FS() << ", 4); " << FD() << " = (float)_iv; }\n";
-        } else if (instr.mnemonic == "cvt.w.s") {
-            // fd bits = (int32_t)fs
-            out << "    { int32_t _iv = (int32_t)" << FS() << "; memcpy(&" << FD() << ", &_iv, 4); }\n";
-        } else if (instr.mnemonic == "cvt.s.d")
-            out << "    " << FD() << " = " << FS() << "; /* cvt.s.d approx */\n";
-        else if (instr.mnemonic == "mfc1")
-            // rt=GPR dest, rd=FPU src
-            out << "    { uint32_t _fv; memcpy(&_fv, &regs->f[" << (int)instr.rd << "], 4); " << R(instr.rt) << " = (int32_t)_fv; }\n";
-        else if (instr.mnemonic == "mtc1")
-            // rt=GPR src, rd=FPU dest
-            out << "    { uint32_t _fv = (uint32_t)(int32_t)" << R(instr.rt) << "; memcpy(&regs->f[" << (int)instr.rd << "], &_fv, 4); }\n";
-        else if (instr.mnemonic == "ctc1" || instr.mnemonic == "cfc1")
-            out << "    /* " << instr.mnemonic << " control reg — ignored */\n";
-        else if (instr.mnemonic == "c.lt.s")
-            out << "    regs->fcr31 = (" << FS() << " < " << FT() << ") ? (regs->fcr31 | 0x00800000u) : (regs->fcr31 & ~0x00800000u);\n";
-        else if (instr.mnemonic == "c.le.s")
-            out << "    regs->fcr31 = (" << FS() << " <= " << FT() << ") ? (regs->fcr31 | 0x00800000u) : (regs->fcr31 & ~0x00800000u);\n";
-        else if (instr.mnemonic == "c.eq.s")
-            out << "    regs->fcr31 = (" << FS() << " == " << FT() << ") ? (regs->fcr31 | 0x00800000u) : (regs->fcr31 & ~0x00800000u);\n";
-        else if (instr.mnemonic == "c.lt.d" || instr.mnemonic == "c.le.d" || instr.mnemonic == "c.eq.d")
-            out << "    regs->fcr31 = 0; /* " << instr.mnemonic << " stub */\n";
-        else
-            out << "    /* FLOAT TODO: " << instr.mnemonic << " " << instr.operands << " */\n";
-        break;
-    }
     default:
         out << "    /* UNHANDLED: " << instr.mnemonic << " " << instr.operands << " */\n";
         break;
@@ -494,40 +311,17 @@ std::string Recompiler::emit_function(const Function& func) const {
         << " - 0x" << func.end_addr << "]\n";
     out << "void func_" << std::hex << func.start_addr << "(PS2Regs* regs) {\n";
 
-    // Only emit labels for targets that are within this function's bounds
-    std::set<uint32_t> label_addrs;
-    for (uint32_t t : func.jump_targets) {
-        if (t >= func.start_addr && t <= func.end_addr)
-            label_addrs.insert(t);
-    }
+    // Emit label for every instruction address (needed for goto targets)
+    std::set<uint32_t> label_addrs(func.jump_targets.begin(), func.jump_targets.end());
 
-    // MIPS has branch delay slots: the instruction AFTER a branch/jump
-    // always executes, regardless of whether the branch is taken.
-    // We emit the delay slot instruction BEFORE the branch, then skip it.
-    auto emit_one = [&](const DecodedInstr& i) {
-        if (label_addrs.count(i.pc))
-            out << "L_" << std::hex << i.pc << ":\n";
-        out << "    regs->r[0] = 0;\n";
-        out << emit_instruction(i, func);
-    };
-
-    const auto& instrs = func.instructions;
-    for (size_t i = 0; i < instrs.size(); ++i) {
-        const auto& instr = instrs[i];
-        bool has_ds = (instr.is_branch() || instr.is_jump())
-                      && (i + 1 < instrs.size());
-        if (has_ds) {
-            // Emit delay slot FIRST (it always executes)
-            emit_one(instrs[i + 1]);
-            // Then emit the branch/jump
-            if (label_addrs.count(instr.pc))
-                out << "L_" << std::hex << instr.pc << ":\n";
-            out << "    regs->r[0] = 0;\n";
-            out << emit_instruction(instr, func);
-            ++i;  // skip delay slot in next iteration
-        } else {
-            emit_one(instr);
+    for (const auto& instr : func.instructions) {
+        // Emit label if this address is a branch target
+        if (label_addrs.count(instr.pc)) {
+            out << "L_" << std::hex << instr.pc << ":\n";
         }
+        // $zero is always 0 — enforce it
+        out << "    regs->r[0] = 0;\n";
+        out << emit_instruction(instr, func);
     }
     out << "}\n\n";
     return out.str();
@@ -542,75 +336,28 @@ bool Recompiler::emit_c(const std::string& output_path) {
 
     f << emit_runtime_header();
 
-    // Collect all cross-function call targets (tail-calls + jal) that were
-    // not discovered by the BFS — will be emitted as stubs after fwd decls.
-    std::set<uint32_t> stub_addrs;
-    for (auto& [addr, func] : m_functions) {
-        for (const auto& instr : func.instructions) {
-            uint32_t tgt = instr.branch_target;
-            if (tgt == 0) continue;
-            bool is_cross_call =
-                (instr.mnemonic == "jal") ||
-                ((instr.is_branch() || instr.mnemonic == "j") &&
-                 (tgt < func.start_addr || tgt > func.end_addr));
-            if (is_cross_call && m_functions.find(tgt) == m_functions.end()) {
-                stub_addrs.insert(tgt);
-            }
-        }
-    }
-
-    // Forward-declare all discovered functions
-    // NOTE: patch_output.py uses this marker — keep it here.
+    // Forward-declare all functions
     f << "// Forward declarations\n";
     for (auto& [addr, func] : m_functions) {
         f << "void func_" << std::hex << addr << "(PS2Regs* regs);\n";
     }
-    // Also forward-declare stubs so functions can call them before definition
-    for (uint32_t sa : stub_addrs) {
-        f << "void func_" << std::hex << sa << "(PS2Regs* regs);\n";
-    }
     f << "\n";
-
-    // Stubs for undiscovered/out-of-range call targets (after fwd decls so
-    // patch_output.py doesn't strip them — it only strips up to "// Forward declarations")
-    if (!stub_addrs.empty()) {
-        f << "// --- Stubs for undiscovered/out-of-range call targets ---\n";
-        for (uint32_t sa : stub_addrs) {
-            f << "void func_" << std::hex << sa
-              << "(PS2Regs* regs) { (void)regs; /* stub: addr not in ELF */ }\n";
-        }
-        f << "\n";
-        std::cout << "[RECOMP] Emitted " << stub_addrs.size()
-                  << " stubs for undiscovered functions\n";
-    }
 
     // Emit each function
     for (auto& [addr, func] : m_functions) {
         f << emit_function(func);
     }
 
-    // Emit ps2_dispatch — big switch mapping every known PS2 address → C function.
-    // Called by jalr (indirect call via register).
-    f << "// Dynamic dispatch — called by jalr instructions\n";
-    f << "void ps2_dispatch(PS2Regs* regs, uint32_t addr) {\n";
-    f << "    switch (addr) {\n";
-    for (auto& [addr, func] : m_functions) {
-        f << "    case 0x" << std::hex << addr << "u: func_" << std::hex << addr << "(regs); return;\n";
-    }
-    // Also include stub targets
-    for (uint32_t sa : stub_addrs) {
-        f << "    case 0x" << std::hex << sa << "u: func_" << std::hex << sa << "(regs); return;\n";
-    }
-    f << "    default: /* unknown jalr target 0x%x — skip */ (void)regs; break;\n";
-    f << "    }\n";
-    f << "}\n\n";
-
     // Emit named game entry (called by host_main.cpp)
     f << "// Game entry point — called by host_main.cpp\n";
     f << "void ps2_game_start(void) {\n";
     f << "    PS2Regs regs = {0};\n";
     f << "    func_" << std::hex << m_elf.entry_point << "(&regs);\n";
-    f << "}\n";
+    f << "}\n\n";
+    // Keep a standalone main for direct compilation (without runtime)
+    f << "#ifndef PS2_RECOMP_HAS_HOST\n";
+    f << "int main(void) { ps2_game_start(); return 0; }\n";
+    f << "#endif\n";
 
     std::cout << "[RECOMP] Wrote " << m_functions.size()
               << " functions to " << output_path << "\n";

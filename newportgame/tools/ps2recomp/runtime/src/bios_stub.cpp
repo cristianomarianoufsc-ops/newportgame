@@ -14,27 +14,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <atomic>
-#include <unordered_map>
-#include <vector>
-#include <algorithm>
-
-// -----------------------------------------------------------------------
-// Syscall frequency counters — printed by dump_syscall_stats()
-// -----------------------------------------------------------------------
-static std::atomic<uint64_t> g_syscall_total{0};
-static std::unordered_map<uint32_t, uint64_t> g_syscall_counts;
-
-extern "C" void dump_syscall_stats(void) {
-    fprintf(stderr, "[BIOS] Syscall stats (total=%llu):\n",
-            (unsigned long long)g_syscall_total.load());
-    // Sort by count descending
-    std::vector<std::pair<uint64_t,uint32_t>> v;
-    for (auto& kv : g_syscall_counts) v.push_back({kv.second, kv.first});
-    std::sort(v.rbegin(), v.rend());
-    for (auto& [cnt, code] : v)
-        fprintf(stderr, "  syscall 0x%02x : %llu\n", code, (unsigned long long)cnt);
-}
 
 // -----------------------------------------------------------------------
 // Helpers
@@ -89,15 +68,7 @@ static uint32_t g_heap_size = 0;
 // -----------------------------------------------------------------------
 // ps2_syscall — called by generated SYSCALL instructions in output.c
 // -----------------------------------------------------------------------
-extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
-    // PS2 EE convention: real syscall number is in $v1 (r3).
-    // Games use either positive r3=N or negative r3=-N (two's complement).
-    int32_t r3 = (int32_t)(uint32_t)regs->r[3];
-    uint32_t code = (r3 < 0) ? (uint32_t)(-r3) : (uint32_t)r3;
-
-    ++g_syscall_total;
-    g_syscall_counts[code]++;
-
+extern "C" void ps2_syscall(PS2Regs* regs, uint32_t code) {
     // Registers: a0=$4, a1=$5, a2=$6, a3=$7, v0=$2 (return value)
     uint32_t a0 = (uint32_t)regs->r[4];
     uint32_t a1 = (uint32_t)regs->r[5];
