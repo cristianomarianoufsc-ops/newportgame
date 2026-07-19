@@ -78,6 +78,12 @@ void Recompiler::discover_function(uint32_t addr, const std::string& name) {
         if (instr.mnemonic == "jal" && instr.branch_target != 0)
             func.call_targets.push_back(instr.branch_target);
 
+        // Tail-call via `j` outside function bounds — treat as callee for BFS
+        if (instr.mnemonic == "j" && instr.branch_target != 0) {
+            if (instr.branch_target < func.start_addr || instr.branch_target > func.end_addr)
+                func.call_targets.push_back(instr.branch_target);
+        }
+
         if ((instr.is_branch() || instr.is_jump()) && instr.branch_target != 0)
             func.jump_targets.push_back(instr.branch_target);
 
@@ -137,7 +143,7 @@ R"(// ps2recomp generated output — DO NOT EDIT
 }
 
 std::string Recompiler::emit_instruction(const DecodedInstr& instr,
-                                          const Function& /*func*/) const
+                                          const Function& func) const
 {
     std::ostringstream out;
 
@@ -268,6 +274,11 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    { uint32_t _fv = mem_read32((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << ")); memcpy(&regs->f[" << (int)instr.rt << "], &_fv, 4); }\n";
         else if (instr.mnemonic == "ldl" || instr.mnemonic == "ldr")
             out << "    " << R(instr.rt) << " = mem_read64((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << ")); /* " << instr.mnemonic << " approx */\n";
+        // Unaligned loads (little-endian PS2 EE)
+        else if (instr.mnemonic == "lwl")
+            out << "    { uint32_t _ea=(uint32_t)(" << R(instr.rs) << "+" << SE(instr.imm) << "); uint32_t _w=mem_read32(_ea&~3u); uint32_t _s=(_ea&3u)*8u; uint32_t _m=0xFFFFFFFFu<<_s; " << R(instr.rt) << "=(uint64_t)(int64_t)(int32_t)(((uint32_t)" << R(instr.rt) << "&~_m)|(_w&_m)); }\n";
+        else if (instr.mnemonic == "lwr")
+            out << "    { uint32_t _ea=(uint32_t)(" << R(instr.rs) << "+" << SE(instr.imm) << "); uint32_t _w=mem_read32(_ea&~3u); uint32_t _s=(_ea&3u)*8u; uint32_t _m=(_s>=24u)?0xFFFFFFFFu:((1u<<(_s+8u))-1u); " << R(instr.rt) << "=(uint64_t)(int64_t)(int32_t)(((uint32_t)" << R(instr.rt) << "&~_m)|(_w&_m)); }\n";
         else
             out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
@@ -286,6 +297,11 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    { uint32_t _fv; memcpy(&_fv, &regs->f[" << (int)instr.rt << "], 4); mem_write32((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), _fv); }\n";
         else if (instr.mnemonic == "sdl" || instr.mnemonic == "sdr")
             out << "    mem_write64((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), " << R(instr.rt) << "); /* " << instr.mnemonic << " approx */\n";
+        // Unaligned stores (little-endian PS2 EE)
+        else if (instr.mnemonic == "swl")
+            out << "    { uint32_t _ea=(uint32_t)(" << R(instr.rs) << "+" << SE(instr.imm) << "); uint32_t _s=(_ea&3u)*8u; uint32_t _m=0xFFFFFFFFu<<_s; uint32_t _w=mem_read32(_ea&~3u); mem_write32(_ea&~3u,(_w&~_m)|((uint32_t)" << R(instr.rt) << "&_m)); }\n";
+        else if (instr.mnemonic == "swr")
+            out << "    { uint32_t _ea=(uint32_t)(" << R(instr.rs) << "+" << SE(instr.imm) << "); uint32_t _s=(_ea&3u)*8u; uint32_t _m=(_s>=24u)?0xFFFFFFFFu:((1u<<(_s+8u))-1u); uint32_t _w=mem_read32(_ea&~3u); mem_write32(_ea&~3u,(_w&~_m)|((uint32_t)" << R(instr.rt) << "&_m)); }\n";
         else
             out << "    /* TODO: " << instr.mnemonic << " */\n";
         break;
@@ -335,8 +351,14 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    /* TODO branch: " << instr.mnemonic << " */\n";
         break;
     case InstrCategory::JUMP:
-        if (instr.mnemonic == "j")
-            out << "    goto L_" << std::hex << instr.branch_target << ";\n";
+        if (instr.mnemonic == "j") {
+            bool in_func = instr.branch_target >= func.start_addr &&
+                           instr.branch_target <= func.end_addr;
+            if (in_func)
+                out << "    goto L_" << std::hex << instr.branch_target << ";\n";
+            else
+                out << "    func_" << std::hex << instr.branch_target << "(regs); return;\n";
+        }
         else if (instr.mnemonic == "jal")
             out << "    regs->r[31] = 0x" << std::hex << (instr.pc + 8) << "u; /* ra */ func_" << std::hex << instr.branch_target << "(regs);\n";
         else if (instr.mnemonic == "jr")
@@ -471,6 +493,10 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
         }
         break;
     }
+    case InstrCategory::TRAP:
+        // break/trap instructions — software breakpoints; no-op in recompiled code
+        out << "    /* " << instr.mnemonic << " — no-op */\n";
+        break;
     default:
         out << "    /* UNHANDLED: " << instr.mnemonic << " " << instr.operands << " */\n";
         break;
@@ -517,11 +543,12 @@ std::string Recompiler::emit_function(const Function& func) const {
     for (size_t i = 0; i < n; i++) {
         const auto& instr = func.instructions[i];
 
-        // Already emitted as a delay slot — skip
-        if (consumed_pcs.count(instr.pc)) continue;
-
+        // Emit label BEFORE consumed-slot check: a delay-slot PC can also be a branch target
         if (label_addrs.count(instr.pc))
             out << "L_" << std::hex << instr.pc << ":\n";
+
+        // Already emitted as a delay slot — skip the body
+        if (consumed_pcs.count(instr.pc)) continue;
         // $zero is always 0 — enforce it
         out << "    regs->r[0] = 0;\n";
 

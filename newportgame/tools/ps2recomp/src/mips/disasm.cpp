@@ -60,6 +60,21 @@ DecodedInstr MIPSDisassembler::disassemble(uint32_t word, uint32_t pc) {
         return decode_special(word, pc);
     case MIPSOpcode::REGIMM:
         return decode_regimm(word, pc);
+    case MIPSOpcode::COP0:
+        // COP0 — eret, ei, di, mfc0, mtc0 etc. — no-op in host
+        d.category = InstrCategory::NOP;
+        d.operands = "";
+        if (BITS(word, 25, 25)) { // CO=1
+            switch (BITS(word, 5, 0)) {
+            case 0x18: d.mnemonic = "eret"; break;
+            case 0x38: d.mnemonic = "ei";   break;
+            case 0x39: d.mnemonic = "di";   break;
+            default:   d.mnemonic = "cop0.co"; break;
+            }
+        } else {
+            d.mnemonic = "cop0";
+        }
+        return d;
     case MIPSOpcode::COP1:
         return decode_cop1(word, pc);
     case MIPSOpcode::MMI:
@@ -234,6 +249,10 @@ DecodedInstr MIPSDisassembler::decode_special(uint32_t word, uint32_t pc) {
     case MIPSSpecial::SYSCALL:
         d.type = InstrType::SYSCALL; d.category = InstrCategory::SYSCALL;
         d.mnemonic = "syscall";
+        break;
+    case MIPSSpecial::SYNC:
+        d.mnemonic = "sync";
+        d.category = InstrCategory::NOP;
         break;
     case MIPSSpecial::BREAK:
         d.category = InstrCategory::TRAP;

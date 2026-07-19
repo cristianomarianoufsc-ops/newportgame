@@ -127,6 +127,9 @@ static void (*g_frame_cb)(void) = nullptr;
 
 void gs_set_frame_callback(void (*cb)(void)) { g_frame_cb = cb; }
 
+// Headless flag — when true all GL calls become no-ops
+bool g_headless = false;
+
 // -----------------------------------------------------------------------
 // GLSL shaders
 // -----------------------------------------------------------------------
@@ -189,6 +192,7 @@ static GLuint compile_shader(GLenum type, const char* src) {
 extern "C" void gs_gl_init(int vp_w, int vp_h) {
     gs.vp_w = vp_w;
     gs.vp_h = vp_h;
+    if (g_headless) { fprintf(stderr, "[GS] headless — GL init skipped\n"); return; }
 
     // Build shader program
     GLuint vs = compile_shader(GL_VERTEX_SHADER,   VERT);
@@ -226,7 +230,7 @@ extern "C" void gs_gl_init(int vp_w, int vp_h) {
 // Called by host on window resize
 extern "C" void gs_set_viewport(int w, int h) {
     gs.vp_w = w; gs.vp_h = h;
-    glViewport(0, 0, w, h);
+    if (!g_headless) glViewport(0, 0, w, h);
 }
 
 // -----------------------------------------------------------------------
@@ -234,6 +238,7 @@ extern "C" void gs_set_viewport(int w, int h) {
 // -----------------------------------------------------------------------
 static void gs_flush() {
     if (gs.vbuf.empty()) return;
+    if (g_headless) { gs.vbuf.clear(); return; }   // no GL in headless mode
     GSContext& ctx = gs.ctx[gs.prim_ctxt];
 
     // Pack into flat float array
@@ -364,12 +369,12 @@ static void gs_push_vertex(float raw_x, float raw_y, float raw_z) {
 // Frame boundary helpers (called by host_main)
 // -----------------------------------------------------------------------
 extern "C" void gs_frame_begin(void) {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (!g_headless) glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 extern "C" void gs_frame_end(void) {
     gs_flush();
-    if (g_frame_cb) g_frame_cb();   // host does SDL_GL_SwapWindow + PollEvent
+    if (g_frame_cb) g_frame_cb();
 }
 
 // -----------------------------------------------------------------------

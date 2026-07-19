@@ -22,6 +22,7 @@
 #include <cstring>
 #include <cstdint>
 #include <csignal>
+#include <atomic>
 
 // Declared in gs_stub.cpp
 extern "C" {
@@ -114,7 +115,6 @@ static void on_frame_done(void) {
                 ev.key.keysym.sym == SDLK_F4) {
                 g_running = false;
             }
-            // TODO: map SDL keys → PS2 DualShock 2 input
         } else if (ev.type == SDL_WINDOWEVENT &&
                    ev.window.event == SDL_WINDOWEVENT_RESIZED) {
             int w = ev.window.data1, h = ev.window.data2;
@@ -123,13 +123,79 @@ static void on_frame_done(void) {
     }
 
     if (!g_running) {
-        // Teardown and exit cleanly
         SDL_GL_DeleteContext(g_gl_ctx);
         SDL_DestroyWindow(g_win);
         SDL_Quit();
         fprintf(stderr, "[HOST] Bye!\n");
         exit(0);
     }
+}
+
+// -----------------------------------------------------------------------
+// Headless mode — no SDL/GL, just game code execution with signal traps
+// -----------------------------------------------------------------------
+static std::atomic<uint64_t> g_frame_count{0};
+static std::atomic<uint64_t> g_gs_writes{0};
+static int g_headless_max_frames = 300;   // stop after N GS_FINISH events
+
+static void headless_frame_cb(void) {
+    uint64_t f = ++g_frame_count;
+    if (f % 60 == 0)
+        fprintf(stderr, "[HEADLESS] frame %-6llu  gs_writes=%-8llu\n",
+                (unsigned long long)f, (unsigned long long)g_gs_writes.load());
+    if ((int)f >= g_headless_max_frames) {
+        fprintf(stderr, "[HEADLESS] Reached %d frames — stopping cleanly.\n",
+                g_headless_max_frames);
+        exit(0);
+    }
+}
+
+// Signal handler — print which signal killed us and where (approximate).
+// We use a global volatile to record the last PC the game was tracking.
+volatile uint32_t g_last_pc = 0;
+
+static void signal_handler(int sig) {
+    const char* name = "UNKNOWN";
+    switch (sig) {
+        case SIGSEGV: name = "SIGSEGV (segfault)";        break;
+        case SIGBUS:  name = "SIGBUS  (bus error)";        break;
+        case SIGFPE:  name = "SIGFPE  (FP exception)";    break;
+        case SIGILL:  name = "SIGILL  (illegal opcode)";  break;
+        case SIGABRT: name = "SIGABRT (abort)";           break;
+    }
+    fprintf(stderr,
+        "\n[CRASH] Signal %d — %s\n"
+        "[CRASH] frames completed : %llu\n"
+        "[CRASH] GS register writes: %llu\n"
+        "[CRASH] last tracked PC  : 0x%08x\n",
+        sig, name,
+        (unsigned long long)g_frame_count.load(),
+        (unsigned long long)g_gs_writes.load(),
+        (unsigned int)g_last_pc);
+    // Re-raise with default handler so core dump is produced
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+extern "C" void dump_syscall_stats(void);
+
+static void sigalrm_handler(int) {
+    fprintf(stderr, "[HEADLESS] SIGALRM — dumping stats after timeout:\n");
+    dump_syscall_stats();
+    fprintf(stderr, "[HEADLESS] frames=%llu  gs_writes=%llu\n",
+            (unsigned long long)g_frame_count.load(),
+            (unsigned long long)g_gs_writes.load());
+    signal(SIGALRM, SIG_DFL);
+    raise(SIGALRM);
+}
+
+static void install_signal_handlers(void) {
+    signal(SIGSEGV, signal_handler);
+    signal(SIGBUS,  signal_handler);
+    signal(SIGFPE,  signal_handler);
+    signal(SIGILL,  signal_handler);
+    signal(SIGABRT, signal_handler);
+    signal(SIGALRM, sigalrm_handler);
 }
 
 // -----------------------------------------------------------------------
@@ -143,31 +209,60 @@ int main(int argc, char** argv) {
         "=======================================================\n");
 
     // ------------------------------------------------------------------
-    // Optional: load ELF from disk into ps2_ram so runtime data
-    // (globals, VTables, pre-initialised arrays) is available.
-    // The recompiled code (output.c) has hardcoded addresses baked in;
-    // matching RAM content makes dynamic data references work correctly.
+    // Argument parsing
+    //   --headless [--frames N]   Run without SDL/GL; game code only
+    //   <elf-path>                Load ELF segments into ps2_ram
     // ------------------------------------------------------------------
-    if (argc >= 2) {
-        fprintf(stderr, "[HOST] Loading ELF: %s\n", argv[1]);
-        load_elf(argv[1]);
-    } else {
-        fprintf(stderr,
-            "[HOST] No ELF provided. Run as:\n"
-            "       %s path/to/SCUS_973.99.elf\n"
-            "[HOST] Continuing with zeroed ps2_ram (hardcoded code may still run)\n",
-            argv[0]);
+    const char* elf_path = nullptr;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--headless") == 0) {
+            g_headless = true;
+        } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
+            g_headless_max_frames = atoi(argv[++i]);
+        } else {
+            elf_path = argv[i];
+        }
     }
 
     // ------------------------------------------------------------------
-    // SDL2 init
+    // Load ELF into ps2_ram (always, whether headless or not)
+    // ------------------------------------------------------------------
+    if (elf_path) {
+        fprintf(stderr, "[HOST] Loading ELF: %s\n", elf_path);
+        load_elf(elf_path);
+    } else {
+        fprintf(stderr,
+            "[HOST] No ELF provided. Usage:\n"
+            "       %s [--headless [--frames N]] path/to/SCUS_973.99.elf\n"
+            "[HOST] Continuing with zeroed ps2_ram\n", argv[0]);
+    }
+
+    // ------------------------------------------------------------------
+    // Headless path — skip all SDL/GL, install signal handlers, run game
+    // ------------------------------------------------------------------
+    if (g_headless) {
+        fprintf(stderr,
+            "[HEADLESS] Mode enabled — no SDL/GL\n"
+            "[HEADLESS] Will stop after %d GS_FINISH events\n",
+            g_headless_max_frames);
+        install_signal_handlers();
+        alarm(25);   // SIGALRM after 25s → dump syscall stats then exit
+        gs_set_frame_callback(headless_frame_cb);
+        fprintf(stderr, "[HEADLESS] Calling ps2_game_start()...\n");
+        ps2_game_start();
+        fprintf(stderr, "[HEADLESS] ps2_game_start() returned (frames=%llu)\n",
+                (unsigned long long)g_frame_count.load());
+        return 0;
+    }
+
+    // ------------------------------------------------------------------
+    // Normal path — SDL2 + OpenGL 3.3
     // ------------------------------------------------------------------
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) < 0) {
         fprintf(stderr, "[HOST] SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
 
-    // Request OpenGL 3.3 Core
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -191,11 +286,8 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[HOST] SDL_GL_CreateContext: %s\n", SDL_GetError());
         SDL_DestroyWindow(g_win); SDL_Quit(); return 1;
     }
-    SDL_GL_SetSwapInterval(1);  // VSync on
+    SDL_GL_SetSwapInterval(1);
 
-    // ------------------------------------------------------------------
-    // GLEW init (must be after context creation)
-    // ------------------------------------------------------------------
     glewExperimental = GL_TRUE;
     GLenum glew_err = glewInit();
     if (glew_err != GLEW_OK) {
@@ -203,22 +295,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // ------------------------------------------------------------------
-    // GS stub init + frame callback
-    // ------------------------------------------------------------------
     gs_gl_init(W, H);
     gs_set_frame_callback(on_frame_done);
-    gs_frame_begin();   // Clear initial frame
+    gs_frame_begin();
 
-    // ------------------------------------------------------------------
-    // Run the game — ps2_game_start() is the generated entry that
-    // calls func_100008 (ps2_entry) and runs forever.
-    // GS_REG_FINISH writes trigger on_frame_done → SDL_GL_SwapWindow.
-    // ------------------------------------------------------------------
     fprintf(stderr, "[HOST] Starting game loop (ESC or F4 to quit)...\n");
     ps2_game_start();
 
-    // Should not reach here under normal operation
-    on_frame_done();  // Final cleanup via g_running=false path
+    on_frame_done();
     return 0;
 }
