@@ -19,7 +19,6 @@ Sem estas ferramentas o fluxo principal não funciona. Sempre verifique que est�
 ### `tools/ps2recomp/build.sh` — compilar o recompilador
 
 Compila o binário `ps2recomp` que processa a ISO e gera o `output.c`.
-Requer: `cmake`, `g++`, `make`.
 
 ```bash
 bash tools/ps2recomp/build.sh
@@ -28,7 +27,16 @@ bash tools/ps2recomp/build.sh
 
 **Dependências no ambiente NixOS (Replit):**
 - `g++` e `make` já estão no PATH
-- `cmake`: instalar com `nix-env -iA nixpkgs.cmake` se não disponível
+- `cmake` está **quebrado** no Replit (segfault) — o `build.sh` usa `g++` diretamente, sem cmake
+
+Se precisar compilar manualmente:
+```bash
+cd tools/ps2recomp
+g++ -std=c++20 -O2 -Wall \
+  src/main.cpp src/iso/udf_parser.cpp src/elf/elf_loader.cpp \
+  src/mips/disasm.cpp src/recomp/recompiler.cpp \
+  -I src -o build/ps2recomp
+```
 
 ---
 
@@ -130,6 +138,18 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 5. Preparar para o runtime (obrigatório):
    python3 ../runtime/patch_output.py output.c
    # Gera output_runtime.c
+
+6. Compilar runtime + output_runtime.c:
+   cd ../runtime
+   bash build_runtime.sh
+
+7. Extrair ELF da ISO e rodar:
+   cd ../build
+   ./ps2recomp extract "God of War (USA).iso" out/
+   ../runtime/build/ps2_game out/SCUS_973.99
+
+   # Ou headless (sem janela):
+   ../runtime/build/ps2_game --headless --frames 10 out/SCUS_973.99
 ```
 
 ---
@@ -138,8 +158,8 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 
 - **Sistema:** NixOS (Replit) — não usar `apt`. Usar `nix-env` ou o skill de pacotes do Replit.
 - **Python:** 3.12 instalado (`python3` disponível no PATH) — nenhum pacote externo necessário
-- **g++ / make:** disponíveis no PATH
-- **cmake:** instalar via `nix-env -iA nixpkgs.cmake` se ausente
+- **g++ / make:** disponíveis no PATH (GCC 14.3)
+- **cmake:** **NÃO USAR** — segfault no Replit. Build usa g++ direto (ver acima)
 - **ISO:** `tools/ps2recomp/build/God of War (USA).iso` (8.52 GB — não versionada no git)
   ```bash
   pip install gdown -q && gdown "1ruRDjG5J0FrCVSU1WdNQqehIoT7csS0S" -O tools/ps2recomp/build/
@@ -153,8 +173,23 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 - [x] ELF32 MIPS loader
 - [x] Disassembler MIPS R5900
 - [x] Recompilador estático MIPS → C
-- [ ] Stub do Graphics Synthesizer (GS) → OpenGL
-- [ ] Stub do IOP/BIOS (syscalls do PS2)
-- [ ] Stub do SPU2 (áudio → OpenAL)
-- [ ] Dispatch indireto (`jalr` — chamadas por ponteiro)
-- [ ] Instruções MMI e VU0 (operações vetoriais)
+- [x] Stub do Graphics Synthesizer (GS) → OpenGL 3.3
+- [x] Stub do IOP/BIOS (syscalls do PS2)
+- [x] Stub do SPU2 (áudio → placeholder OpenAL)
+- [x] **Delay slots corrigidos** — delay slot emitido ANTES do branch/jump; likely branches tratadas separadamente
+- [ ] Dispatch indireto (`jalr` — chamadas por ponteiro) — `ps2_dispatch()` existe mas só cobre funções descobertas via `jal` estático
+- [ ] Instruções MMI e VU0 (operações vetoriais) — parcialmente no disassembler, não traduzidas no recompilador
+- [ ] OpenAL real no SPU2 (atualmente absorve writes sem produzir som)
+- [ ] Descoberta de funções via `jalr` (vtables, callbacks não alcançados por jal estático)
+
+---
+
+## Problemas conhecidos / TODOs críticos
+
+| Problema | Severidade | Detalhe |
+|---|---|---|
+| **31% das instruções** | 🔴 Alto | ~26.834 instruções como TODO/UNHANDLED no output.c — rodar `check_todos.py` para ver lista atualizada |
+| **`jalr` cobertura parcial** | 🔴 Alto | `ps2_dispatch()` cobre apenas funções descobertas via `jal`; funções só chamadas por ponteiro não são alcançadas |
+| **MMI / VU0 não traduzidos** | 🟠 Médio | Operações vetoriais do EE (PINTH, PCPYH, VADDBC etc.) geram UNHANDLED |
+| **Funções ocultas** | 🟠 Médio | Apenas funções alcançáveis via `jal` estático; vtables e callbacks não descobertos |
+| **SPU2 sem áudio real** | 🟡 Baixo | Stub absorve writes mas não produz som; OpenAL não conectado |

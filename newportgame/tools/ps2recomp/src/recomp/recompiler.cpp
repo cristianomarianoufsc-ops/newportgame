@@ -479,6 +479,20 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
     return out.str();
 }
 
+// Helper: build the condition string for a "likely" branch mnemonic
+static std::string likely_cond(const DecodedInstr& instr) {
+    auto R = [](uint8_t r) -> std::string { return "regs->r[" + std::to_string(r) + "]"; };
+    if (instr.mnemonic == "beql")  return R(instr.rs) + " == " + R(instr.rt);
+    if (instr.mnemonic == "bnel")  return R(instr.rs) + " != " + R(instr.rt);
+    if (instr.mnemonic == "blezl") return "(int32_t)" + R(instr.rs) + " <= 0";
+    if (instr.mnemonic == "bgtzl") return "(int32_t)" + R(instr.rs) + " > 0";
+    if (instr.mnemonic == "bgezl") return "(int32_t)" + R(instr.rs) + " >= 0";
+    if (instr.mnemonic == "bltzl") return "(int32_t)" + R(instr.rs) + " < 0";
+    if (instr.mnemonic == "bgezall") return "(int32_t)" + R(instr.rs) + " >= 0";
+    if (instr.mnemonic == "bltzall") return "(int32_t)" + R(instr.rs) + " < 0";
+    return "1 /* TODO likely: " + instr.mnemonic + " */";
+}
+
 std::string Recompiler::emit_function(const Function& func) const {
     std::ostringstream out;
     out << "// Function: " << func.name << "  [0x" << std::hex << func.start_addr
@@ -496,12 +510,58 @@ std::string Recompiler::emit_function(const Function& func) const {
         if (local_pcs.count(t))
             label_addrs.insert(t);
 
-    for (const auto& instr : func.instructions) {
+    // Track which PCs are delay slots already consumed by their parent instruction
+    std::set<uint32_t> consumed_pcs;
+
+    const size_t n = func.instructions.size();
+    for (size_t i = 0; i < n; i++) {
+        const auto& instr = func.instructions[i];
+
+        // Already emitted as a delay slot — skip
+        if (consumed_pcs.count(instr.pc)) continue;
+
         if (label_addrs.count(instr.pc))
             out << "L_" << std::hex << instr.pc << ":\n";
         // $zero is always 0 — enforce it
         out << "    regs->r[0] = 0;\n";
-        out << emit_instruction(instr, func);
+
+        bool is_branch = (instr.category == InstrCategory::BRANCH);
+        bool is_jump   = (instr.category == InstrCategory::JUMP);
+
+        // "Likely" branch variants: delay slot only executes when branch is taken
+        bool is_likely = (instr.mnemonic == "beql"  || instr.mnemonic == "bnel"  ||
+                          instr.mnemonic == "blezl" || instr.mnemonic == "bgtzl" ||
+                          instr.mnemonic == "bgezl" || instr.mnemonic == "bltzl" ||
+                          instr.mnemonic == "bgezall" || instr.mnemonic == "bltzall");
+
+        if ((is_branch || is_jump) && i + 1 < n) {
+            const auto& ds = func.instructions[i + 1];
+            consumed_pcs.insert(ds.pc);
+
+            if (is_likely) {
+                // Likely: if (cond) { delay_slot; goto target; }
+                // Not-taken path: delay slot is annulled, continue at pc+8.
+                out << "    if (" << likely_cond(instr) << ") {\n";
+                // Indent delay slot by one extra level
+                std::string ds_code = emit_instruction(ds, func);
+                std::istringstream ss(ds_code);
+                std::string line;
+                while (std::getline(ss, line)) {
+                    if (!line.empty()) out << "    " << line << "\n";
+                }
+                if (instr.branch_target != 0)
+                    out << "        goto L_" << std::hex << instr.branch_target << ";\n";
+                out << "    } /* end likely " << instr.mnemonic << " */\n";
+            } else {
+                // Normal branch/jump: delay slot ALWAYS executes before control transfer.
+                // Emit delay slot first, then the branch/jump.
+                out << emit_instruction(ds, func);
+                out << emit_instruction(instr, func);
+            }
+        } else {
+            // No delay slot available (end of function body) or not a branch/jump
+            out << emit_instruction(instr, func);
+        }
     }
 
     // For any jump_target outside this function, emit ONE tail-dispatch stub per address

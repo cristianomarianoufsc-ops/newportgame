@@ -1,43 +1,39 @@
-#!/bin/bash
-# build.sh — Compila o ps2recomp no Linux
+#!/usr/bin/env bash
+# PS2 Recompiler — Build script
+# Usa g++ direto (cmake está quebrado no Replit/NixOS)
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/build"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "=== PS2 Recompiler — Build ==="
 echo "Diretório: $SCRIPT_DIR"
 
-# Verifica dependências
-for cmd in cmake g++ make; do
-    if ! command -v "$cmd" &>/dev/null; then
-        echo "ERRO: '$cmd' não encontrado. Rode primeiro: ./install_deps.sh"
-        exit 1
-    fi
-done
+# Verificar g++
+if ! command -v g++ &>/dev/null; then
+    echo "ERRO: g++ não encontrado."
+    exit 1
+fi
 
-echo "Compilador: $(g++ --version | head -1)"
-echo "CMake:      $(cmake --version | head -1)"
+GXX_VER=$(g++ --version | head -1)
+echo "Compilador: $GXX_VER"
+
+mkdir -p build
+
+echo "Compilando..."
+g++ -std=c++20 -O2 -Wall -Wextra \
+    src/main.cpp \
+    src/iso/udf_parser.cpp \
+    src/elf/elf_loader.cpp \
+    src/mips/disasm.cpp \
+    src/recomp/recompiler.cpp \
+    -I src \
+    -o build/ps2recomp
+
 echo ""
-
-# Build
-mkdir -p "$BUILD_DIR"
-cd "$BUILD_DIR"
-
-cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CXX_COMPILER=g++
-
-make -j$(nproc)
-
+echo "=== Build concluído ==="
+echo "Binário: build/ps2recomp"
 echo ""
-echo "=== Build concluído! ==="
-echo ""
-echo "Binário: $BUILD_DIR/ps2recomp"
-echo ""
-echo "Exemplos de uso:"
-echo "  ./build/ps2recomp info    <game.iso>"
-echo "  ./build/ps2recomp list    <game.iso>"
-echo "  ./build/ps2recomp disasm  <game.iso> 100"
-echo "  ./build/ps2recomp extract <game.iso> ./out/"
-echo "  ./build/ps2recomp recomp  <game.iso> output.c"
+echo "Uso:"
+echo "  ./build/ps2recomp info   \"God of War (USA).iso\""
+echo "  ./build/ps2recomp recomp \"God of War (USA).iso\" build/output.c"
