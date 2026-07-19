@@ -185,7 +185,8 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 - [x] **Label em delay-slot** — labels emitidos ANTES do consumed_pcs check para evitar `goto` sem definição
 - [x] **1449 funções descobertas** — (era 1426) — BFS encontra funções via `j` tail call
 - [x] **Pipeline completo funcionando** — 2.5B syscalls executados headless (era 0)
-- [ ] **IOP spin-loop** — syscall 0x83 chamado em loop; IOP stub precisa simular evento/sinal
+- [x] **IOP spin-loop (`syscall 0x83`) CORRIGIDO** — Loop de merge de dois cursores DMA: `s3-524 == s2-360`. Fix: retornar valores alternados (`BASE+524`, `BASE+360`) que satisfazem a condição imediatamente, evitando loop infinito
+- [ ] Verificar que o fix do 0x83 progride o jogo (necessita ELF da ISO para testar)
 - [ ] Dispatch indireto (`jalr` — chamadas por ponteiro) — `ps2_dispatch()` cobre apenas funções descobertas via `jal`/`j` estático
 - [ ] Instruções MMI e VU0 (operações vetoriais) — parcialmente no disassembler, não traduzidas no recompilador
 - [ ] OpenAL real no SPU2 (atualmente absorve writes sem produzir som)
@@ -197,15 +198,15 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 
 | Problema | Severidade | Detalhe |
 |---|---|---|
-| **IOP spin-loop (`syscall 0x83`)** | 🔴 Crítico | O jogo executa syscall 0x83 bilhões de vezes esperando resposta do IOP; frames=0. Implementar sleep/wakeup real no bios_stub ou simular evento IOP |
+| **Teste pós-fix 0x83** | 🔴 Crítico | Fix aplicado no `bios_stub.cpp`; testar com `--headless --frames 30 SCUS_973.99.elf` após ISO baixar. Próximo bloqueador provável: MMI/VU0 UNHANDLED ou jalr dinâmico |
 | **MMI / VU0 não traduzidos** | 🟠 Médio | `pcpyld`(128), `ppacw`(59), `padduw`(29), `pand`(24) etc. — UNHANDLED. Impacta operações vetoriais |
 | **`jalr` cobertura parcial** | 🟠 Médio | `ps2_dispatch()` cobre apenas funções via `jal`/`j` estático; vtables/callbacks dinâmicos não alcançados |
 | **SPU2 sem áudio real** | 🟡 Baixo | Stub absorve writes mas não produz som; OpenAL não conectado |
 
-### Diagnóstico atual (headless --frames 30)
+### Diagnóstico ANTERIOR ao fix do 0x83 (headless --frames 30)
 
 ```
-syscall 0x83 : 2.576.953.245 (IOP yield loop)
+syscall 0x83 : 2.576.953.245 (loop infinito no merge de cursores DMA)
 syscall 0x74 : 2
 syscall 0x40 : 2  (CreateSema)
 syscall 0x3d : 1
@@ -213,4 +214,34 @@ syscall 0x3c : 1
 frames=0  gs_writes=0
 ```
 
-O `syscall 0x83` é provavelmente `sceSifSendCmd` ou `sceSifDmaStat` — o jogo aguarda o IOP (Sound Processor / IO Processor) inicializar, mas o stub não sinaliza conclusão. **Próximo passo**: identificar syscall 0x83 no SDK do PS2 e fazer o bios_stub retornar o valor correto para liberar o loop.
+### Análise do loop (func_299390 em output.c):
+
+O `syscall 0x83` (`SIF_SET_DMA2`) era chamado num algoritmo de merge de dois cursores:
+```c
+s3 = SIF_SET_DMA2(0x80000000, 0x80080000);  // retornava 0
+s2 = SIF_SET_DMA2(0x80000000, 0x80080000);  // retornava 0
+// s1 = s3 - 524 = -524; s0 = s2 - 360 = -360  → nunca iguais → loop infinito
+while (s1 != s0) { advance whichever cursor is behind... }
+```
+
+**Fix aplicado** (`bios_stub.cpp`): retorna valores alternados `BASE+524` e `BASE+360` (onde `BASE=0x500000`), garantindo `s3-524 == s2-360 = BASE` → loop sai imediatamente.
+
+### Após fix — executar para verificar
+
+```bash
+# Rebuildar runtime após fix:
+bash tools/ps2recomp/build_relink.sh
+
+# Extrair ELF (requer ISO):
+cd tools/ps2recomp/build
+./ps2recomp extract "God of War (USA).iso" elf_out/
+
+# Testar headless:
+../runtime/build/ps2_game --headless --frames 30 elf_out/SCUS_973.99.elf
+```
+
+ISO: se não estiver presente, baixar com:
+```bash
+pip3 install gdown --break-system-packages -q
+gdown "1ruRDjG5J0FrCVSU1WdNQqehIoT7csS0S" -O tools/ps2recomp/build/
+```

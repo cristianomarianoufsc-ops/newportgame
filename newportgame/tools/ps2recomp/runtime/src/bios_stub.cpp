@@ -80,7 +80,23 @@ enum EESyscall : uint32_t {
     SYS_SIF_GET_REG         = 0x7B,
     SYS_PRINTF              = 0x3C,
     SYS_DPRINTF             = 0x3D,
+    // SIF DMA buffer submission — returns pointer into DMA ring buffer.
+    // Used in a two-cursor merge loop: the game calls it twice, then loops
+    // advancing whichever cursor is behind until (s3-524) == (s2-360).
+    // We return alternating values that satisfy this immediately.
+    SYS_SIF_SET_DMA2        = 0x83,
 };
+
+// -----------------------------------------------------------------------
+// Fake SIF DMA buffer — two consecutive calls must return values V1, V2
+// such that (V1 - 524) == (V2 - 360), i.e. V1 - V2 == 164.
+// We allocate a small region in safe PS2 RAM (0x500000) and alternate.
+// -----------------------------------------------------------------------
+static const uint32_t SIF_DMA_BASE = 0x00500000u;  // safe area in PS2 RAM
+// First  call: SIF_DMA_BASE + 524  → s3, then s3-524 = SIF_DMA_BASE
+// Second call: SIF_DMA_BASE + 360  → s2, then s2-360 = SIF_DMA_BASE
+// Condition s3-524 == s2-360 satisfied → loop exits immediately.
+static uint32_t g_sif_dma_call = 0;
 
 // Simple stub heap tracker (for InitHeap/EndOfHeap)
 static uint32_t g_heap_base = 0;
@@ -236,6 +252,30 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         regs->r[2] = 0;
         break;
 
+    // ---- SIF DMA buffer allocation (0x83) ----
+    // This syscall returns a pointer into the EE-side SIF DMA ring buffer.
+    // The game's init path calls it in a two-cursor merge loop:
+    //
+    //   s3 = SIF_SET_DMA2(a0, a1)    // first call
+    //   s2 = SIF_SET_DMA2(a0, a1)    // second call
+    //   s1 = s3 - 524
+    //   s0 = s2 - 360
+    //   while (s1 != s0) { advance whichever cursor is behind via more calls }
+    //
+    // For the loop to exit immediately, we need (s3 - 524) == (s2 - 360),
+    // i.e. s3 - s2 == 164.  We return alternating values that satisfy this:
+    //   call 0, 2, 4… → SIF_DMA_BASE + 524  (s1 = SIF_DMA_BASE)
+    //   call 1, 3, 5… → SIF_DMA_BASE + 360  (s0 = SIF_DMA_BASE)
+    // Both cursors map to SIF_DMA_BASE → s1 == s0 → loop exits.
+    case SYS_SIF_SET_DMA2: {
+        uint32_t idx = g_sif_dma_call++;
+        if (idx & 1u)
+            regs->r[2] = SIF_DMA_BASE + 360u;   // even-indexed in pair
+        else
+            regs->r[2] = SIF_DMA_BASE + 524u;   // odd-indexed in pair
+        break;
+    }
+
     // ---- Debug output ----
     case SYS_PRINTF:
     case SYS_DPRINTF: {
@@ -250,7 +290,8 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
 
     default:
         // Unknown syscall — succeed silently
-        // Uncomment to debug: fprintf(stderr, "[BIOS] Unknown syscall 0x%x\n", code);
+        // Uncomment to debug unknown codes:
+        // fprintf(stderr, "[BIOS] Unknown syscall 0x%x (a0=0x%x a1=0x%x)\n", code, a0, a1);
         regs->r[2] = 0;
         break;
     }
