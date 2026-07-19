@@ -77,6 +77,29 @@ DecodedInstr MIPSDisassembler::disassemble(uint32_t word, uint32_t pc) {
         return d;
     case MIPSOpcode::COP1:
         return decode_cop1(word, pc);
+    case MIPSOpcode::COP2:
+        // VU0 macro-mode instructions — op=0x12
+        // These drive the VU0 coprocessor from the EE main CPU.
+        // We decode them as VECTOR (NOP stub) to remove UNHANDLED noise.
+        {
+            d.category = InstrCategory::VECTOR;
+            d.type     = InstrType::R_TYPE;
+            // Decode the sub-type enough to name it; actual emulation is NOP.
+            uint32_t sub = BITS(word, 25, 21);  // bits 25:21 = co or qmfc2/qmtc2 etc.
+            uint32_t fd  = BITS(word, 15, 11);
+            uint32_t fs  = BITS(word, 20, 16);
+            d.rs = (uint8_t)BITS(word, 25, 21);
+            d.rt = (uint8_t)BITS(word, 20, 16);
+            d.rd = (uint8_t)BITS(word, 15, 11);
+            if (sub == 0x01)       d.mnemonic = "qmfc2";
+            else if (sub == 0x05)  d.mnemonic = "qmtc2";
+            else if (sub == 0x02)  d.mnemonic = "cfc2";
+            else if (sub == 0x06)  d.mnemonic = "ctc2";
+            else                   d.mnemonic = "vu0.cop2";
+            (void)fd; (void)fs;
+            d.operands = "";
+        }
+        return d;
     case MIPSOpcode::MMI:
         return decode_mmi(word, pc);
 

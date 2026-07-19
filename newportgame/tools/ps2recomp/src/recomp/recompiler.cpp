@@ -274,6 +274,9 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    { uint32_t _fv = mem_read32((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << ")); memcpy(&regs->f[" << (int)instr.rt << "], &_fv, 4); }\n";
         else if (instr.mnemonic == "ldl" || instr.mnemonic == "ldr")
             out << "    " << R(instr.rt) << " = mem_read64((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << ")); /* " << instr.mnemonic << " approx */\n";
+        // VU0 quadword load — lqc2 vt, imm(rs) — loads 128-bit into vf[vt]
+        else if (instr.mnemonic == "lqc2")
+            out << "    mem_read128((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), &regs->vf[" << (int)instr.rt << "][0], &regs->vf[" << (int)instr.rt << "][1]);\n";
         // Unaligned loads (little-endian PS2 EE)
         else if (instr.mnemonic == "lwl")
             out << "    { uint32_t _ea=(uint32_t)(" << R(instr.rs) << "+" << SE(instr.imm) << "); uint32_t _w=mem_read32(_ea&~3u); uint32_t _s=(_ea&3u)*8u; uint32_t _m=0xFFFFFFFFu<<_s; " << R(instr.rt) << "=(uint64_t)(int64_t)(int32_t)(((uint32_t)" << R(instr.rt) << "&~_m)|(_w&_m)); }\n";
@@ -297,6 +300,9 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    { uint32_t _fv; memcpy(&_fv, &regs->f[" << (int)instr.rt << "], 4); mem_write32((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), _fv); }\n";
         else if (instr.mnemonic == "sdl" || instr.mnemonic == "sdr")
             out << "    mem_write64((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), " << R(instr.rt) << "); /* " << instr.mnemonic << " approx */\n";
+        // VU0 quadword store — sqc2 vt, imm(rs) — stores 128-bit from vf[vt]
+        else if (instr.mnemonic == "sqc2")
+            out << "    mem_write128((uint32_t)(" << R(instr.rs) << " + " << SE(instr.imm) << "), regs->vf[" << (int)instr.rt << "][0], regs->vf[" << (int)instr.rt << "][1]);\n";
         // Unaligned stores (little-endian PS2 EE)
         else if (instr.mnemonic == "swl")
             out << "    { uint32_t _ea=(uint32_t)(" << R(instr.rs) << "+" << SE(instr.imm) << "); uint32_t _s=(_ea&3u)*8u; uint32_t _m=0xFFFFFFFFu<<_s; uint32_t _w=mem_read32(_ea&~3u); mem_write32(_ea&~3u,(_w&~_m)|((uint32_t)" << R(instr.rt) << "&_m)); }\n";
@@ -497,6 +503,79 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
         // break/trap instructions — software breakpoints; no-op in recompiled code
         out << "    /* " << instr.mnemonic << " — no-op */\n";
         break;
+    case InstrCategory::VECTOR: {
+        // MMI parallel integer ops and VU0 macro-mode (COP2)
+        // Most are approximated; VU0 macro-mode (cop2/qmfc2/qmtc2) is NOP.
+        if (instr.mnemonic == "pand")
+            // Parallel AND 128-bit: treat as 64-bit (lower half)
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " & " << R(instr.rt) << "; /* pand */\n";
+        else if (instr.mnemonic == "por")
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " | " << R(instr.rt) << "; /* por */\n";
+        else if (instr.mnemonic == "pnor")
+            out << "    " << R(instr.rd) << " = ~(" << R(instr.rs) << " | " << R(instr.rt) << "); /* pnor */\n";
+        else if (instr.mnemonic == "pxor")
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " ^ " << R(instr.rt) << "; /* pxor */\n";
+        else if (instr.mnemonic == "pcpyld")
+            // Copy Lower Doubleword: rd[127:64]=rt[63:0], rd[63:0]=rs[63:0]
+            // 64-bit approximation: rd = lower 64 of rs (discard rt upper placement)
+            out << "    " << R(instr.rd) << " = ((uint64_t)(uint32_t)" << R(instr.rt) << " << 32) | (uint32_t)" << R(instr.rs) << "; /* pcpyld approx */\n";
+        else if (instr.mnemonic == "pcpyud")
+            // Copy Upper Doubleword: rd[127:64]=rt[127:64], rd[63:0]=rs[127:64]
+            out << "    " << R(instr.rd) << " = (" << R(instr.rt) << " & 0xFFFFFFFF00000000ULL) | (" << R(instr.rs) << " >> 32); /* pcpyud approx */\n";
+        else if (instr.mnemonic == "pcpyh")
+            // Copy Higher Word: replicate upper 16 bits to all halfwords
+            out << "    { uint16_t _h=(uint16_t)(" << R(instr.rt) << ">>48); " << R(instr.rd) << "=((uint64_t)_h<<48)|((uint64_t)_h<<32)|((uint64_t)_h<<16)|(uint64_t)_h; } /* pcpyh approx */\n";
+        else if (instr.mnemonic == "ppacw")
+            // Pack to Words: rd[63:32]=rt[31:0], rd[31:0]=rs[31:0]
+            out << "    " << R(instr.rd) << " = (((uint64_t)(uint32_t)" << R(instr.rt) << ") << 32) | (uint32_t)" << R(instr.rs) << "; /* ppacw */\n";
+        else if (instr.mnemonic == "ppach")
+            // Pack to Halfwords: takes low 16 bits of each 32-bit lane
+            out << "    { uint64_t _s=" << R(instr.rs) << ", _t=" << R(instr.rt) << "; "
+                << R(instr.rd) << " = ((uint64_t)(_t&0xFFFF)<<48)|((uint64_t)((_t>>32)&0xFFFF)<<32)|((uint64_t)(_s&0xFFFF)<<16)|((_s>>32)&0xFFFF); } /* ppach */\n";
+        else if (instr.mnemonic == "pextlw")
+            // Extend Lower Words: rd[127:96]=rt[31:0], rd[95:64]=rs[31:0], rd[63:32]=rt[0:0],...
+            // 64-bit approx: interleave lower 32 of rs and rt
+            out << "    " << R(instr.rd) << " = (((uint64_t)(uint32_t)" << R(instr.rs) << ") << 32) | (uint32_t)" << R(instr.rt) << "; /* pextlw approx */\n";
+        else if (instr.mnemonic == "pextuw")
+            // Extend Upper Words
+            out << "    " << R(instr.rd) << " = (" << R(instr.rs) << " & 0xFFFFFFFF00000000ULL) | (" << R(instr.rt) << " >> 32); /* pextuw approx */\n";
+        else if (instr.mnemonic == "padduw" || instr.mnemonic == "padduh" || instr.mnemonic == "paddub")
+            // Parallel unsigned add — 64-bit approx
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " + " << R(instr.rt) << "; /* " << instr.mnemonic << " approx */\n";
+        else if (instr.mnemonic == "psubuw" || instr.mnemonic == "psubuh" || instr.mnemonic == "psubub")
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " - " << R(instr.rt) << "; /* " << instr.mnemonic << " approx */\n";
+        else if (instr.mnemonic == "pceqw" || instr.mnemonic == "pceqh" || instr.mnemonic == "pceqb")
+            // Parallel compare equal — set all bits if equal
+            out << "    " << R(instr.rd) << " = (" << R(instr.rs) << " == " << R(instr.rt) << ") ? 0xFFFFFFFFFFFFFFFFULL : 0; /* " << instr.mnemonic << " approx */\n";
+        else if (instr.mnemonic == "pminw" || instr.mnemonic == "pminh")
+            out << "    " << R(instr.rd) << " = ((int64_t)" << R(instr.rs) << " < (int64_t)" << R(instr.rt) << ") ? " << R(instr.rs) << " : " << R(instr.rt) << "; /* " << instr.mnemonic << " */\n";
+        else if (instr.mnemonic == "psubb" || instr.mnemonic == "psubsw" || instr.mnemonic == "psubsh" || instr.mnemonic == "psubsb")
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " - " << R(instr.rt) << "; /* " << instr.mnemonic << " approx */\n";
+        else if (instr.mnemonic == "paddsw" || instr.mnemonic == "paddsh" || instr.mnemonic == "paddsb")
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " + " << R(instr.rt) << "; /* " << instr.mnemonic << " approx */\n";
+        else if (instr.mnemonic == "mfhi1")
+            out << "    " << R(instr.rd) << " = regs->hi1;\n";
+        else if (instr.mnemonic == "mflo1")
+            out << "    " << R(instr.rd) << " = regs->lo1;\n";
+        else if (instr.mnemonic == "mthi1")
+            out << "    regs->hi1 = " << R(instr.rs) << ";\n";
+        else if (instr.mnemonic == "mtlo1")
+            out << "    regs->lo1 = " << R(instr.rs) << ";\n";
+        else if (instr.mnemonic == "mult1")
+            out << "    { int64_t _r = (int64_t)(int32_t)" << R(instr.rs) << " * (int64_t)(int32_t)" << R(instr.rt) << "; regs->lo1=(uint64_t)(int64_t)(int32_t)_r; regs->hi1=(uint64_t)(int64_t)(int32_t)(_r>>32); " << R(instr.rd) << "=regs->lo1; }\n";
+        else if (instr.mnemonic == "multu1")
+            out << "    { uint64_t _r = (uint64_t)(uint32_t)" << R(instr.rs) << " * (uint64_t)(uint32_t)" << R(instr.rt) << "; regs->lo1=(uint32_t)_r; regs->hi1=(uint32_t)(_r>>32); " << R(instr.rd) << "=regs->lo1; }\n";
+        else if (instr.mnemonic == "madd")
+            out << "    { int64_t _hilo = ((int64_t)regs->hi << 32) | (uint32_t)regs->lo; _hilo += (int64_t)(int32_t)" << R(instr.rs) << " * (int64_t)(int32_t)" << R(instr.rt) << "; regs->lo=(uint64_t)(int64_t)(int32_t)_hilo; regs->hi=(uint64_t)(int64_t)(int32_t)(_hilo>>32); " << R(instr.rd) << "=regs->lo; }\n";
+        else if (instr.mnemonic == "madd1")
+            out << "    { int64_t _hilo = ((int64_t)regs->hi1 << 32) | (uint32_t)regs->lo1; _hilo += (int64_t)(int32_t)" << R(instr.rs) << " * (int64_t)(int32_t)" << R(instr.rt) << "; regs->lo1=(uint64_t)(int64_t)(int32_t)_hilo; regs->hi1=(uint64_t)(int64_t)(int32_t)(_hilo>>32); " << R(instr.rd) << "=regs->lo1; }\n";
+        else if (instr.mnemonic == "maddu" || instr.mnemonic == "maddu1")
+            out << "    " << R(instr.rd) << " = " << R(instr.rs) << " + " << R(instr.rt) << "; /* " << instr.mnemonic << " approx */\n";
+        else
+            // VU0 macro-mode (cop2/qmfc2/qmtc2/vu0.*) and remaining MMI — NOP
+            out << "    /* VU0/MMI NOP: " << instr.mnemonic << " */\n";
+        break;
+    }
     default:
         out << "    /* UNHANDLED: " << instr.mnemonic << " " << instr.operands << " */\n";
         break;
