@@ -144,14 +144,17 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
     if (m_opts.emit_comments) {
         out << "    // " << instr.to_string() << "\n";
     }
-    if (m_opts.emit_pc_tracking) {
-        out << "    regs->pc = 0x" << std::hex << instr.pc << "u;\n";
-    }
-
-    auto R  = [](uint8_t r) -> std::string { return "regs->r[" + std::to_string(r) + "]"; };
-    auto F  = [](uint8_t r) -> std::string { return "regs->f[" + std::to_string(r) + "]"; };
-    auto SE = [](int16_t v) -> std::string { return std::to_string((int32_t)v); };
+    // Helpers — all return strings so they never touch out's format flags
+    auto R   = [](uint8_t r)  -> std::string { return "regs->r[" + std::to_string(r) + "]"; };
+    auto F   = [](uint8_t r)  -> std::string { return "regs->f[" + std::to_string(r) + "]"; };
+    auto SE  = [](int16_t v)  -> std::string { return std::to_string((int32_t)v); };
+    auto SA  = [](uint8_t s)  -> std::string { return std::to_string((int)s); };  // shift amount — always decimal
     auto HEX = [](uint32_t v) -> std::string { std::ostringstream os; os << "0x" << std::hex << v << "u"; return os.str(); };
+
+    if (m_opts.emit_pc_tracking) {
+        // Use HEX() so out stays in decimal mode
+        out << "    regs->pc = " << HEX(instr.pc) << ";\n";
+    }
 
     switch (instr.category) {
     case InstrCategory::NOP:
@@ -197,7 +200,7 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    " << R(instr.rt) << " = ((uint32_t)" << R(instr.rs) << " < (uint32_t)" << SE(instr.imm) << ") ? 1 : 0;\n";
         // 64-bit ALU
         else if (instr.mnemonic == "daddi" || instr.mnemonic == "daddiu")
-            out << "    " << R(instr.rt) << " = " << R(instr.rs) << " + (uint64_t)(int64_t)(int16_t)" << (int)instr.imm << ";\n";
+            out << "    " << R(instr.rt) << " = " << R(instr.rs) << " + (uint64_t)(int64_t)(int16_t)(" << SE(instr.imm) << ");\n";
         else if (instr.mnemonic == "daddu" || instr.mnemonic == "dadd")
             out << "    " << R(instr.rd) << " = " << R(instr.rs) << " + " << R(instr.rt) << ";\n";
         else if (instr.mnemonic == "dsubu" || instr.mnemonic == "dsub")
@@ -208,12 +211,13 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
     }
     case InstrCategory::SHIFT:
         // 32-bit shifts (result sign-extended to 64)
+        // 32-bit shifts — result sign-extended to 64 bits (EE-correct)
         if (instr.mnemonic == "sll")
-            out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((uint32_t)" << R(instr.rt) << " << " << (int)instr.shamt << ");\n";
+            out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((uint32_t)" << R(instr.rt) << " << " << SA(instr.shamt) << ");\n";
         else if (instr.mnemonic == "srl")
-            out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((uint32_t)" << R(instr.rt) << " >> " << (int)instr.shamt << ");\n";
+            out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((uint32_t)" << R(instr.rt) << " >> " << SA(instr.shamt) << ");\n";
         else if (instr.mnemonic == "sra")
-            out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((int32_t)" << R(instr.rt) << " >> " << (int)instr.shamt << ");\n";
+            out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((int32_t)" << R(instr.rt) << " >> " << SA(instr.shamt) << ");\n";
         else if (instr.mnemonic == "sllv")
             out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((uint32_t)" << R(instr.rt) << " << (" << R(instr.rs) << " & 31));\n";
         else if (instr.mnemonic == "srlv")
@@ -222,17 +226,17 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
             out << "    " << R(instr.rd) << " = (uint64_t)(int64_t)(int32_t)((int32_t)" << R(instr.rt) << " >> (" << R(instr.rs) << " & 31));\n";
         // 64-bit shifts (immediate)
         else if (instr.mnemonic == "dsll")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << " << (int)instr.shamt << ";\n";
+            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << " << SA(instr.shamt) << ";\n";
         else if (instr.mnemonic == "dsrl")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " >> " << (int)instr.shamt << ";\n";
+            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " >> " << SA(instr.shamt) << ";\n";
         else if (instr.mnemonic == "dsra")
-            out << "    " << R(instr.rd) << " = (uint64_t)((int64_t)" << R(instr.rt) << " >> " << (int)instr.shamt << ");\n";
+            out << "    " << R(instr.rd) << " = (uint64_t)((int64_t)" << R(instr.rt) << " >> " << SA(instr.shamt) << ");\n";
         else if (instr.mnemonic == "dsll32")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << (" << (int)instr.shamt << " + 32);\n";
+            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << (" << SA(instr.shamt) << " + 32);\n";
         else if (instr.mnemonic == "dsrl32")
-            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " >> (" << (int)instr.shamt << " + 32);\n";
+            out << "    " << R(instr.rd) << " = " << R(instr.rt) << " >> (" << SA(instr.shamt) << " + 32);\n";
         else if (instr.mnemonic == "dsra32")
-            out << "    " << R(instr.rd) << " = (uint64_t)((int64_t)" << R(instr.rt) << " >> (" << (int)instr.shamt << " + 32));\n";
+            out << "    " << R(instr.rd) << " = (uint64_t)((int64_t)" << R(instr.rt) << " >> (" << SA(instr.shamt) << " + 32));\n";
         // 64-bit variable shifts
         else if (instr.mnemonic == "dsllv")
             out << "    " << R(instr.rd) << " = " << R(instr.rt) << " << (" << R(instr.rs) << " & 63);\n";
@@ -363,18 +367,41 @@ std::string Recompiler::emit_function(const Function& func) const {
         << " - 0x" << func.end_addr << "]\n";
     out << "void func_" << std::hex << func.start_addr << "(PS2Regs* regs) {\n";
 
-    // Emit label for every instruction address (needed for goto targets)
-    std::set<uint32_t> label_addrs(func.jump_targets.begin(), func.jump_targets.end());
+    // Collect the set of PCs that actually exist in this function
+    std::set<uint32_t> local_pcs;
+    for (const auto& instr : func.instructions)
+        local_pcs.insert(instr.pc);
+
+    // Only emit labels for targets that are local to this function
+    std::set<uint32_t> label_addrs;
+    for (uint32_t t : func.jump_targets)
+        if (local_pcs.count(t))
+            label_addrs.insert(t);
 
     for (const auto& instr : func.instructions) {
-        // Emit label if this address is a branch target
-        if (label_addrs.count(instr.pc)) {
+        if (label_addrs.count(instr.pc))
             out << "L_" << std::hex << instr.pc << ":\n";
-        }
         // $zero is always 0 — enforce it
         out << "    regs->r[0] = 0;\n";
         out << emit_instruction(instr, func);
     }
+
+    // For any jump_target outside this function, emit ONE tail-dispatch stub per address
+    {
+        std::set<uint32_t> emitted_stubs;
+        bool header_done = false;
+        for (uint32_t t : func.jump_targets) {
+            if (!local_pcs.count(t) && !emitted_stubs.count(t)) {
+                if (!header_done) {
+                    out << "    /* --- cross-function branch stubs --- */\n";
+                    header_done = true;
+                }
+                out << "L_" << std::hex << t << ": ps2_dispatch(0x" << std::hex << t << "u, regs); return;\n";
+                emitted_stubs.insert(t);
+            }
+        }
+    }
+
     out << "}\n\n";
     return out.str();
 }

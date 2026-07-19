@@ -6,8 +6,9 @@ patch_output.py — Prepara o output.c gerado pelo recompilador para compilar
 O que faz:
   1. Remove o header inline (PS2Regs, ps2_ram, etc.) e substitui por
      #include "ps2_runtime.h"  (que fornece as definições corretas com extern)
-  2. Renomeia  int main(void)  →  void ps2_game_start(void)
-     e remove o "return 0;" final (void não retorna int)
+  2. Se ps2_game_start NÃO existir no arquivo: renomeia int main(void)
+     para void ps2_game_start(void) e remove o return 0; final.
+     Se ps2_game_start JÁ existir (recompilador novo): remove o main() duplicado.
   3. Salva o resultado em output_runtime.c (nunca sobrescreve output.c)
 
 Uso:
@@ -51,19 +52,35 @@ def patch(src: str) -> str:
         print(f"  Header substituído por #include \"ps2_runtime.h\"")
 
     # ------------------------------------------------------------------
-    # 2. Renomear  int main(void)  →  void ps2_game_start(void)
+    # 2. Lidar com ps2_game_start / main
     # ------------------------------------------------------------------
-    old_sig = "int main(void) {"
-    new_sig  = "void ps2_game_start(void) {"
+    game_start_exists = "void ps2_game_start(void)" in src
+    old_main_sig      = "int main(void) {"
+    new_main_sig      = "void ps2_game_start(void) {"
 
-    if old_sig in src:
-        src = src.replace(old_sig, new_sig, 1)
+    if game_start_exists and old_main_sig not in src:
+        # Recompilador novo: ps2_game_start já gerado, sem main() solto
+        print(f"  ps2_game_start já existe e não há main() — nada a fazer")
+
+    elif game_start_exists and old_main_sig in src:
+        # ps2_game_start existe mas há um main() que chama ps2_game_start:
+        # isso cria duplicata — remover o bloco #ifndef / int main
+        src = re.sub(
+            r'\n#ifndef PS2_RECOMP_HAS_HOST\s*\nint main\(void\)[^\n]*\n#endif\s*\n',
+            '\n',
+            src
+        )
+        # fallback: linha simples sem guard
+        src = re.sub(r'\nint main\(void\) \{[^\n]*\}\n', '\n', src)
+        print(f"  main() redundante removido (ps2_game_start já existe)")
+
+    elif old_main_sig in src:
+        # Recompilador antigo: renomear main → ps2_game_start
+        src = src.replace(old_main_sig, new_main_sig, 1)
         print(f"  main() → ps2_game_start()")
-
-        # Remove  "    return 0;\n"  que está dentro do antigo main
-        # (última ocorrência antes do fechamento final "}")
         src = re.sub(r'\n    return 0;\n\}(\s*)$', '\n}\n', src)
         print(f"  'return 0;' removido de ps2_game_start")
+
     else:
         print("  AVISO: 'int main(void)' não encontrado — verifique o output.c")
 

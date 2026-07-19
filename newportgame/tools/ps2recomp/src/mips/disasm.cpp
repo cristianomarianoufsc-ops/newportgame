@@ -213,12 +213,12 @@ DecodedInstr MIPSDisassembler::decode_special(uint32_t word, uint32_t pc) {
     auto r2v = [&]{ std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rt) << ", " << reg(d.rs); d.operands = os.str(); };
 
     switch ((MIPSSpecial)d.funct) {
-    case MIPSSpecial::SLL:   d.mnemonic = "sll";   r2shamt(true); break;
-    case MIPSSpecial::SRL:   d.mnemonic = "srl";   r2shamt(true); break;
-    case MIPSSpecial::SRA:   d.mnemonic = "sra";   r2shamt(true); break;
-    case MIPSSpecial::SLLV:  d.mnemonic = "sllv";  r2v(); break;
-    case MIPSSpecial::SRLV:  d.mnemonic = "srlv";  r2v(); break;
-    case MIPSSpecial::SRAV:  d.mnemonic = "srav";  r2v(); break;
+    case MIPSSpecial::SLL:   d.mnemonic = "sll";   r2shamt(true); d.category = InstrCategory::SHIFT; break;
+    case MIPSSpecial::SRL:   d.mnemonic = "srl";   r2shamt(true); d.category = InstrCategory::SHIFT; break;
+    case MIPSSpecial::SRA:   d.mnemonic = "sra";   r2shamt(true); d.category = InstrCategory::SHIFT; break;
+    case MIPSSpecial::SLLV:  d.mnemonic = "sllv";  r2v(); d.category = InstrCategory::SHIFT; break;
+    case MIPSSpecial::SRLV:  d.mnemonic = "srlv";  r2v(); d.category = InstrCategory::SHIFT; break;
+    case MIPSSpecial::SRAV:  d.mnemonic = "srav";  r2v(); d.category = InstrCategory::SHIFT; break;
     case MIPSSpecial::JR:
         d.category = InstrCategory::JUMP;
         d.mnemonic = "jr";
@@ -229,8 +229,8 @@ DecodedInstr MIPSDisassembler::decode_special(uint32_t word, uint32_t pc) {
         d.mnemonic = "jalr";
         { std::ostringstream os; os << reg(d.rd) << ", " << reg(d.rs); d.operands = os.str(); }
         break;
-    case MIPSSpecial::MOVZ: d.mnemonic = "movz"; r3(); break;
-    case MIPSSpecial::MOVN: d.mnemonic = "movn"; r3(); break;
+    case MIPSSpecial::MOVZ: d.mnemonic = "movz"; r3(); d.category = InstrCategory::MOVE; break;
+    case MIPSSpecial::MOVN: d.mnemonic = "movn"; r3(); d.category = InstrCategory::MOVE; break;
     case MIPSSpecial::SYSCALL:
         d.type = InstrType::SYSCALL; d.category = InstrCategory::SYSCALL;
         d.mnemonic = "syscall";
@@ -243,9 +243,9 @@ DecodedInstr MIPSDisassembler::decode_special(uint32_t word, uint32_t pc) {
     case MIPSSpecial::MTHI: d.mnemonic = "mthi"; d.operands = reg(d.rs); d.category = InstrCategory::MOVE; break;
     case MIPSSpecial::MFLO: d.mnemonic = "mflo"; d.operands = reg(d.rd); d.category = InstrCategory::MOVE; break;
     case MIPSSpecial::MTLO: d.mnemonic = "mtlo"; d.operands = reg(d.rs); d.category = InstrCategory::MOVE; break;
-    case MIPSSpecial::DSLLV: d.mnemonic = "dsllv"; r2v(); break;
-    case MIPSSpecial::DSRLV: d.mnemonic = "dsrlv"; r2v(); break;
-    case MIPSSpecial::DSRAV: d.mnemonic = "dsrav"; r2v(); break;
+    case MIPSSpecial::DSLLV: d.mnemonic = "dsllv"; r2v(); d.category = InstrCategory::SHIFT; break;
+    case MIPSSpecial::DSRLV: d.mnemonic = "dsrlv"; r2v(); d.category = InstrCategory::SHIFT; break;
+    case MIPSSpecial::DSRAV: d.mnemonic = "dsrav"; r2v(); d.category = InstrCategory::SHIFT; break;
     case MIPSSpecial::MULT:  d.mnemonic = "mult";  d.category = InstrCategory::MULTIPLY; { std::ostringstream os; os << reg(d.rs) << ", " << reg(d.rt); d.operands = os.str(); } break;
     case MIPSSpecial::MULTU: d.mnemonic = "multu"; d.category = InstrCategory::MULTIPLY; { std::ostringstream os; os << reg(d.rs) << ", " << reg(d.rt); d.operands = os.str(); } break;
     case MIPSSpecial::DIV:   d.mnemonic = "div";   d.category = InstrCategory::DIVIDE;   { std::ostringstream os; os << reg(d.rs) << ", " << reg(d.rt); d.operands = os.str(); } break;

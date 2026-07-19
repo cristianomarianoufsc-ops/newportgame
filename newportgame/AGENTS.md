@@ -141,6 +141,9 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 - **g++ / make:** disponíveis no PATH
 - **cmake:** instalar via `nix-env -iA nixpkgs.cmake` se ausente
 - **ISO:** `tools/ps2recomp/build/God of War (USA).iso` (8.52 GB — não versionada no git)
+  ```bash
+  pip install gdown -q && gdown "1ruRDjG5J0FrCVSU1WdNQqehIoT7csS0S" -O tools/ps2recomp/build/
+  ```
 
 ---
 

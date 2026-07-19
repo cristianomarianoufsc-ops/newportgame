@@ -69,6 +69,9 @@ endif()
 # -----------------------------------------------------------------------
 # Compile flags
 # -----------------------------------------------------------------------
+# Tell generated output.c that a host main() exists — suppresses duplicate ps2_game_start
+target_compile_definitions(ps2_game PRIVATE PS2_RECOMP_HAS_HOST)
+
 target_compile_options(ps2_game PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter>
     $<$<COMPILE_LANGUAGE:C>:-Wall -Wno-unused-function -Wno-unused-variable>
