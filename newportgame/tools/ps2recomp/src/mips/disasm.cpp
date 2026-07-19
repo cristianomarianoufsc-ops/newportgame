@@ -329,12 +329,22 @@ DecodedInstr MIPSDisassembler::decode_cop1(uint32_t word, uint32_t pc) {
     }
     if (fmt == 0x04) { d.mnemonic = "mtc1"; std::ostringstream os; os << reg(d.rt) << ", " << freg(d.rd); d.operands = os.str(); return d; }
 
-    const char* op_names[] = {"add","sub","mul","div","sqrt","abs","mov","neg",
-                               "?","?","?","?","round.w","trunc.w","ceil.w","floor.w",
-                               "?","?","?","?","?","?","?","?","?","?","?","?","?","?","?","?",
-                               "cvt.s","cvt.d","?","?","cvt.w","cvt.l"};
-    if (d.funct < 36)
-        d.mnemonic = std::string(op_names[d.funct]) + ".s";
+    // EE FPU opcode table — funct 0-63
+    // PS2-specific: adda(0x18), suba(0x19), mula(0x1a), madd(0x1c), msub(0x1d),
+    //               madda(0x1e), msuba(0x1f), max(0x28), min(0x29)
+    // MIPS compare: c.f..c.ngt (0x30-0x3f)
+    static const char* op_names[64] = {
+        /* 0x00-0x07 */ "add","sub","mul","div","sqrt","abs","mov","neg",
+        /* 0x08-0x0f */ "?","?","?","?","round.w","trunc.w","ceil.w","floor.w",
+        /* 0x10-0x17 */ "?","?","?","?","?","?","?","?",
+        /* 0x18-0x1f */ "adda","suba","mula","?","madd","msub","madda","msuba",
+        /* 0x20-0x27 */ "cvt.s","cvt.d","?","?","cvt.w","cvt.l","?","?",
+        /* 0x28-0x2f */ "max","min","?","?","?","?","?","?",
+        /* 0x30-0x37 */ "c.f","c.un","c.eq","c.ueq","c.olt","c.ult","c.ole","c.ule",
+        /* 0x38-0x3f */ "c.sf","c.ngle","c.seq","c.ngl","c.lt","c.nge","c.le","c.ngt"
+    };
+    if (op_names[d.funct & 0x3f][0] != '?')
+        d.mnemonic = std::string(op_names[d.funct & 0x3f]) + ".s";
     else
         d.mnemonic = "cop1?";
     std::ostringstream os; os << freg(d.rd) << ", " << freg(d.rs) << ", " << freg(d.rt); d.operands = os.str();

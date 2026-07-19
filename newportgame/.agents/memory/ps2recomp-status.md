@@ -1,92 +1,126 @@
 ---
 name: PS2 Recompiler — God of War 1 status
-description: Estado do projeto de recompilação estática PS2→PC, o que foi implementado e próximos passos
+description: Estado completo do projeto: o que foi implementado, TODOs restantes, pipeline de rebuild
 ---
 
-## Estado atual (atualizado)
-
-### Recompilador — o que foi implementado nesta sessão
-
-**recompiler.cpp:**
-- `jalr` — dispatch indireto via `ps2_dispatch()` (tabela switch gerada no output.c)
-- `ld` / `sd` — load/store 64-bit via `mem_read64` / `mem_write64`
-- `lwc1` / `swc1` — load/store FPU via memcpy
-- `lq` / `sq` — load/store 128-bit (lower 64 bits por ora)
-- `ldl` / `ldr` / `sdl` / `sdr` — approx via 64-bit
-- `lwu` — load word unsigned zero-extended
-- `daddi` / `daddiu` / `daddu` / `dadd` / `dsubu` / `dsub` — ALU 64-bit
-- `dsll` / `dsrl` / `dsra` / `dsll32` / `dsrl32` / `dsra32` — shifts 64-bit imediato
-- `dsllv` / `dsrlv` / `dsrav` — shifts 64-bit variável
-- `movz` / `movn` — moves condicionais
-- 32-bit shifts agora sign-extendem para 64 bits (EE-correto)
-- Cross-function branches: emite stub `L_XXXX: ps2_dispatch(0xXXXXu, regs); return;`
-- `emit_pc_tracking` agora usa helper `HEX()` para não contaminar stream com `std::hex`
-- Adicionado lambda `SA(shamt)` → sempre decimal (evita bug hex no shamt)
-
-**disasm.cpp:**
-- `sll`, `srl`, `sra` → `InstrCategory::SHIFT` (antes herdavam ALU por default)
-- `sllv`, `srlv`, `srav` → `InstrCategory::SHIFT`
-- `dsllv`, `dsrlv`, `dsrav` → `InstrCategory::SHIFT`
-- `movz`, `movn` → `InstrCategory::MOVE`
-
-**ps2_runtime.h:**
-- `mem_read64` / `mem_write64` inline (via memcpy para portabilidade)
-
-**runtime/CMakeLists.txt:**
-- `-DPS2_RECOMP_HAS_HOST` adicionado para evitar duplicata de `ps2_game_start`
-
-**runtime/patch_output.py:**
-- Lida com ps2_game_start já existente (recompilador novo); remove main() redundante
-
-### Resultado do check_todos após todas as correções
+## Números atuais
 ```
-TODO total      :      875   (era 2.849 antes — 69% reduzido)
-UNHANDLED total :    3.215
+TODO total      :    875   (era 2.849 no início — 69% de redução)
+UNHANDLED total :  1.535   (era 3.215 — 52% de redução)
+Total issues    :  2.410   (era 6.064 — 60% de redução acumulada)
+mnemonics únicos:     33
 ```
 
-### TODO restante por prioridade
+---
 
-| Categoria | Total | Itens principais |
-|---|---|---|
-| FPU move | 859 | `mtc1` (494), `mov.s` (205), `mfc1` (160) |
-| FPU arith | 536 | `mul.s` (216), `sub.s` (103), `add.s` (89), `div.s` (84), `neg.s` (39) |
-| VU0 store | 466 | `sqc2` (466) — COP2 store |
-| VU0 load | 310 | `lqc2` (310) — COP2 load |
-| other | ~1684 | `???` (1105 — opcode desconhecido), `cop1?` (231), `ppacw` (59) |
-| misc | 76 | `break` (76) |
+## O que foi implementado (acumulado neste agente)
 
-> **Próximo passo prioritário: FPU (COP1)**
-> `mtc1`, `mfc1`, `mov.s`, `mul.s`, `add.s`, `sub.s`, `div.s`, `neg.s`, `abs.s`
-> Implementar em `emit_instruction()` no case `InstrCategory::FLOAT` (ou onde o disasm colocar).
-> ATENÇÃO: verificar em disasm.cpp qual InstrCategory as instruções COP1 recebem antes de implementar.
+### disasm.cpp
+- `sll/srl/sra/sllv/srlv/srav/dsllv/dsrlv/dsrav` → `InstrCategory::SHIFT`
+- `movz/movn` → `InstrCategory::MOVE`
+- Tabela `op_names[64]` COP1 completa:
+  - PS2-específicos: `adda(0x18)`, `suba(0x19)`, `mula(0x1a)`, `madd(0x1c)`, `msub(0x1d)`, `madda(0x1e)`, `msuba(0x1f)`, `max(0x28)`, `min(0x29)`, `cvt.s(0x20)`, `cvt.d(0x21)`
+  - MIPS compare: `c.f..c.ngt` (0x30–0x3f)
 
-### Ferramentas Python disponíveis
-| Arquivo | Uso |
-|---|---|
-| `tools/ps2recomp/check_todos.py --category` | Lista TODOs por categoria após novo output.c |
-| `tools/ps2recomp/jalr_targets.py` | Analisa call sites de jalr |
-| `tools/ps2recomp/find_loops.py` | Detecta loops (backward gotos) |
-| `tools/ps2recomp/runtime/patch_output.py` | Prepara output.c para o runtime |
+### recompiler.cpp — case InstrCategory::FLOAT (novo)
+- `mtc1/mfc1/ctc1/cfc1` (GPR↔FPU bit-exact via memcpy)
+- `mov.s`, `add.s`, `sub.s`, `mul.s`, `div.s` (div-by-zero → ±MAX_FLOAT como HW)
+- `sqrt.s`, `abs.s`, `neg.s`
+- `max.s`, `min.s` (PS2-específicos, sem fmaxf para preservar semântica EE)
+- `adda.s/suba.s/mula.s` → escrevem em `regs->f[32]` (ACC)
+- `madd.s/msub.s` → `fd = ACC ± fs*ft`; `madda.s/msuba.s` → `ACC ±= fs*ft`
+- `cvt.s.s` com detecção de fmt: fmt=0x14 (W) → int32→float; fmt=0x10 (S) → NOP
+- `cvt.w.s`, `round.w.s`, `trunc.w.s`, `ceil.w.s`, `floor.w.s`
+- Compare: `c.eq/c.lt/c.le/c.olt/c.ole/c.ult/c.ule/c.f/c.sf/c.un` + variantes → fcr31 bit 23
+- `bc1t/bc1f` no case BRANCH
 
-### Pipeline de rebuild (ordem exata)
+### recompiler.cpp — outros cases
+- `jalr` → `ps2_dispatch()`
+- `ld/sd` 64-bit, `lq/sq` 128-bit, `ldl/ldr/sdl/sdr`, `lwc1/swc1`, `lwu`
+- ALU 64-bit: `daddi/daddiu/daddu/dadd/dsub/dsubu`
+- Shifts 64-bit: `dsll/dsrl/dsra/dsll32/dsrl32/dsra32/dsllv/dsrlv/dsrav`
+- `movz/movn`, `bgezal/bltzal`
+- Cross-function branch stubs via `ps2_dispatch`
+- 32-bit shifts sign-extendem para 64-bit (EE-correto)
+
+### ps2_runtime.h
+- `mem_read64/mem_write64` inline
+- `#include <math.h>`
+- `float f[33]` — f[0-31]=FP registers, **f[32]=ACC** (acumulador PS2)
+
+### Ferramentas Python
+- `check_todos.py --category` — analisa output.c por categoria
+- `jalr_targets.py` — rastreia call sites de jalr
+- `patch_output.py` — prepara output.c para o runtime
+
+---
+
+## ⚠️ Armadilha crítica: sincronização disasm.cpp
+
+**Sempre usar `touch` antes de `make`** — se o cp ocorrer no mesmo segundo que o build anterior, o make não recompila:
+
 ```bash
-cd tools/ps2recomp/build
-make -j$(nproc)                                              # recompila ps2recomp
-./ps2recomp recomp "God of War (USA).iso" output.c          # gera output.c
-python3 ../check_todos.py output.c --category               # verifica TODOs restantes
-python3 ../runtime/patch_output.py output.c output_runtime.c
-cd ../runtime/build && make -j$(nproc)                      # compila ps2_game
-./ps2_game --headless --frames 50 ../../../elf_out/SCUS_973.99.elf
+cp newportgame/tools/.../disasm.cpp     tools/.../disasm.cpp
+cp newportgame/tools/.../recompiler.cpp tools/.../recompiler.cpp
+touch tools/ps2recomp/src/mips/disasm.cpp \
+      tools/ps2recomp/src/recomp/recompiler.cpp
+cd tools/ps2recomp/build && make -j$(nproc)
+# Verificar: deve mostrar "Building CXX object ... disasm.cpp.o"
 ```
 
-### Arquivos-chave
+---
+
+## TODO restante por prioridade
+
+| Categoria | Itens | Count |
+|---|---|---|
+| `???` UNHANDLED | opcodes EE desconhecidos | 1.105 |
+| `sqc2` TODO | COP2/VU0 store 128-bit | 466 |
+| `lqc2` TODO | COP2/VU0 load 128-bit | 310 |
+| `pcpyld/pcpyh/pcpyud` UNHANDLED | MMI pack/copy 64-bit | 158 |
+| `break` UNHANDLED | debug breakpoint (pode stub vazio) | 76 |
+| `ppacw/padduw/pand/por/pnor` UNHANDLED | MMI SIMD | 146 |
+| `lwl/lwr` TODO | load word left/right (unaligned) | 34 |
+| `swl/swr` TODO | store word left/right | 22 |
+| `special?` TODO | opcodes SPECIAL não reconhecidos | 43 |
+
+> **Próximos passos sugeridos (em ordem):**
+> 1. `lwl/lwr/swl/swr` — 56 itens, simples de implementar (byte-lane unaligned)
+> 2. `break` — stub vazio (1 linha)
+> 3. MMI básico: `pcpyld/pcpyud/pcpyh` — pack/copy de 64-bit entre registradores de 128-bit
+> 4. `lqc2/sqc2` — COP2 stubs (pelo menos não travar)
+> 5. Compilar runtime no host MX Linux com SDL2
+
+---
+
+## Pipeline de rebuild completo
+```bash
+# 1. Editar em newportgame/tools/ps2recomp/src/
+# 2. Sincronizar
+cp newportgame/tools/ps2recomp/src/mips/disasm.cpp     tools/ps2recomp/src/mips/disasm.cpp
+cp newportgame/tools/ps2recomp/src/recomp/recompiler.cpp tools/ps2recomp/src/recomp/recompiler.cpp
+cp newportgame/tools/ps2recomp/runtime/include/ps2_runtime.h tools/ps2recomp/runtime/include/ps2_runtime.h
+touch tools/ps2recomp/src/mips/disasm.cpp tools/ps2recomp/src/recomp/recompiler.cpp
+# 3. Rebuild
+cd tools/ps2recomp/build && make -j$(nproc)
+# 4. Gerar e verificar
+./ps2recomp recomp "God of War (USA).iso" output.c
+python3 .../check_todos.py output.c --category
+python3 .../runtime/patch_output.py output.c output_runtime.c
+# 5. Copiar de volta para git
+cp tools/ps2recomp/build/{ps2recomp,output.c,output_runtime.c} \
+   newportgame/tools/ps2recomp/build/
+# 6. Commit + push
+cd newportgame && git add -f tools/ps2recomp/build/{ps2recomp,output.c,output_runtime.c}
+git add tools/ps2recomp/src/ tools/ps2recomp/runtime/ .agents/memory/ AGENTS.md
+git commit -m "..." && git push origin main
+```
+
+## Arquivos-chave
 | Arquivo | Descrição |
 |---|---|
-| `tools/ps2recomp/src/recomp/recompiler.cpp` | emit_instruction, emit_function, emit_c |
-| `tools/ps2recomp/src/mips/disasm.cpp` | Decodificador MIPS — InstrCategory aqui |
-| `tools/ps2recomp/runtime/include/ps2_runtime.h` | mem_read64/write64, PS2Regs |
-| `tools/ps2recomp/runtime/CMakeLists.txt` | Build do runtime (tem -DPS2_RECOMP_HAS_HOST) |
-| `tools/ps2recomp/runtime/src/host_main.cpp` | Main SDL2 + headless mode |
-
-**Why:** `jalr`+`ld`/`sd`+shifts eram a causa raiz do loop infinito. FPU é o próximo gargalo.
-**How to apply:** Implementar COP1 — verificar InstrCategory no disasm, depois implementar em emit_instruction.
+| `tools/ps2recomp/src/recomp/recompiler.cpp` | emit_instruction — toda a lógica de geração de C |
+| `tools/ps2recomp/src/mips/disasm.cpp` | Decodificador MIPS — InstrCategory e op_names COP1 |
+| `tools/ps2recomp/runtime/include/ps2_runtime.h` | PS2Regs (f[33]), mem helpers, math.h |
+| `tools/ps2recomp/runtime/CMakeLists.txt` | Build do runtime (-DPS2_RECOMP_HAS_HOST) |
+| `tools/ps2recomp/build/output.c` | C gerado — 1426 funções |

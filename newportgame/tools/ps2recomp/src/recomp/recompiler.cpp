@@ -353,6 +353,124 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
     case InstrCategory::SYSCALL:
         out << "    ps2_syscall(regs, 0x" << std::hex << ((instr.raw >> 6) & 0xfffff) << "u);\n";
         break;
+    case InstrCategory::FLOAT: {
+        // COP1 (FPU) — PS2 EE has 32-bit single-precision only (no double)
+        // Operand layout for arithmetic: fd=bits[10:6], fs=rd=bits[15:11], ft=rt=bits[20:16]
+        // Operand layout for mfc1/mtc1/ctc1: gpr=rt=bits[20:16], fp=rd=bits[15:11]
+        uint8_t fd = (instr.raw >> 6) & 0x1f;
+        uint8_t fs = instr.rd;   // bits 15-11
+        uint8_t ft = instr.rt;   // bits 20-16 (also GPR for mfc1/mtc1)
+
+        if (instr.mnemonic == "mtc1") {
+            // Move from GPR(ft) to FP(fs) — bit-exact 32-bit copy
+            out << "    memcpy(&" << F(fs) << ", &regs->r[" << (int)ft << "], 4);\n";
+        } else if (instr.mnemonic == "mfc1") {
+            // Move from FP(fs) to GPR(ft) — sign-extend 32→64
+            out << "    { uint32_t _v; memcpy(&_v, &" << F(fs) << ", 4); "
+                << R(ft) << " = (int64_t)(int32_t)_v; }\n";
+        } else if (instr.mnemonic == "ctc1") {
+            // Control transfer to FP control register (fcr31)
+            out << "    regs->fcr31 = (uint32_t)" << R(ft) << "; /* ctc1 */\n";
+        } else if (instr.mnemonic == "cfc1") {
+            // Move from FP control register to GPR
+            out << "    " << R(ft) << " = (int64_t)(int32_t)regs->fcr31; /* cfc1 */\n";
+        } else if (instr.mnemonic == "mov.s") {
+            out << "    " << F(fd) << " = " << F(fs) << ";\n";
+        } else if (instr.mnemonic == "add.s") {
+            out << "    " << F(fd) << " = " << F(fs) << " + " << F(ft) << ";\n";
+        } else if (instr.mnemonic == "sub.s") {
+            out << "    " << F(fd) << " = " << F(fs) << " - " << F(ft) << ";\n";
+        } else if (instr.mnemonic == "mul.s") {
+            out << "    " << F(fd) << " = " << F(fs) << " * " << F(ft) << ";\n";
+        } else if (instr.mnemonic == "div.s") {
+            // PS2 hardware: div by zero gives ±MAX_FLOAT, not inf
+            out << "    " << F(fd) << " = (" << F(ft) << " != 0.0f) ? "
+                << F(fs) << " / " << F(ft)
+                << " : ((" << F(fs) << " < 0.0f) ? -3.402823466e+38f : 3.402823466e+38f);\n";
+        } else if (instr.mnemonic == "sqrt.s") {
+            out << "    " << F(fd) << " = sqrtf(fabsf(" << F(fs) << "));\n";
+        } else if (instr.mnemonic == "abs.s") {
+            out << "    " << F(fd) << " = fabsf(" << F(fs) << ");\n";
+        } else if (instr.mnemonic == "neg.s") {
+            out << "    " << F(fd) << " = -" << F(fs) << ";\n";
+        } else if (instr.mnemonic == "max.s") {
+            // PS2-specific: max of two floats (NaN-safe on EE)
+            out << "    " << F(fd) << " = (" << F(fs) << " >= " << F(ft) << ") ? " << F(fs) << " : " << F(ft) << ";\n";
+        } else if (instr.mnemonic == "min.s") {
+            // PS2-specific: min of two floats
+            out << "    " << F(fd) << " = (" << F(fs) << " <= " << F(ft) << ") ? " << F(fs) << " : " << F(ft) << ";\n";
+        } else if (instr.mnemonic == "adda.s") {
+            // PS2-specific: ACC = fs + ft
+            out << "    regs->f[32 /*ACC*/] = " << F(fs) << " + " << F(ft) << "; /* adda.s */\n";
+        } else if (instr.mnemonic == "suba.s") {
+            out << "    regs->f[32 /*ACC*/] = " << F(fs) << " - " << F(ft) << "; /* suba.s */\n";
+        } else if (instr.mnemonic == "mula.s") {
+            out << "    regs->f[32 /*ACC*/] = " << F(fs) << " * " << F(ft) << "; /* mula.s */\n";
+        } else if (instr.mnemonic == "madd.s") {
+            out << "    " << F(fd) << " = regs->f[32 /*ACC*/] + " << F(fs) << " * " << F(ft) << "; /* madd.s */\n";
+        } else if (instr.mnemonic == "msub.s") {
+            out << "    " << F(fd) << " = regs->f[32 /*ACC*/] - " << F(fs) << " * " << F(ft) << "; /* msub.s */\n";
+        } else if (instr.mnemonic == "madda.s") {
+            out << "    regs->f[32 /*ACC*/] += " << F(fs) << " * " << F(ft) << "; /* madda.s */\n";
+        } else if (instr.mnemonic == "msuba.s") {
+            out << "    regs->f[32 /*ACC*/] -= " << F(fs) << " * " << F(ft) << "; /* msuba.s */\n";
+        } else if (instr.mnemonic == "cvt.s.s") {
+            // disasm always appends ".s"; check fmt to distinguish CVT.S.S vs CVT.S.W
+            uint8_t fmt_field = (instr.raw >> 21) & 0x1f;
+            if (fmt_field == 0x14) { // W (word) → CVT.S.W: int32 in FP reg → float
+                out << "    { int32_t _v; memcpy(&_v, &" << F(fs) << ", 4); "
+                    << F(fd) << " = (float)_v; }\n";
+            } else { // S → S: NOP
+                out << "    " << F(fd) << " = " << F(fs) << "; /* cvt.s.s nop */\n";
+            }
+        } else if (instr.mnemonic == "cvt.s.w") {
+            // Convert word (int32 stored in FP reg) to float
+            out << "    { int32_t _v; memcpy(&_v, &" << F(fs) << ", 4); "
+                << F(fd) << " = (float)_v; }\n";
+        } else if (instr.mnemonic == "cvt.w.s") {
+            // Convert float to word (truncate toward zero)
+            out << "    { int32_t _v = (int32_t)" << F(fs) << "; "
+                << "memcpy(&" << F(fd) << ", &_v, 4); }\n";
+        } else if (instr.mnemonic == "round.w.s") {
+            out << "    { int32_t _v = (int32_t)roundf(" << F(fs) << "); "
+                << "memcpy(&" << F(fd) << ", &_v, 4); }\n";
+        } else if (instr.mnemonic == "trunc.w.s") {
+            out << "    { int32_t _v = (int32_t)truncf(" << F(fs) << "); "
+                << "memcpy(&" << F(fd) << ", &_v, 4); }\n";
+        } else if (instr.mnemonic == "ceil.w.s") {
+            out << "    { int32_t _v = (int32_t)ceilf(" << F(fs) << "); "
+                << "memcpy(&" << F(fd) << ", &_v, 4); }\n";
+        } else if (instr.mnemonic == "floor.w.s") {
+            out << "    { int32_t _v = (int32_t)floorf(" << F(fs) << "); "
+                << "memcpy(&" << F(fd) << ", &_v, 4); }\n";
+        // FP compare — result goes into fcr31 bit 23 (C flag)
+        } else if (instr.mnemonic == "c.eq.s" || instr.mnemonic == "c.seq.s") {
+            out << "    if (" << F(fs) << " == " << F(ft)
+                << ") regs->fcr31 |= (1u<<23); else regs->fcr31 &= ~(1u<<23);\n";
+        } else if (instr.mnemonic == "c.lt.s" || instr.mnemonic == "c.olt.s" || instr.mnemonic == "c.nge.s") {
+            out << "    if (" << F(fs) << " < " << F(ft)
+                << ") regs->fcr31 |= (1u<<23); else regs->fcr31 &= ~(1u<<23);\n";
+        } else if (instr.mnemonic == "c.le.s" || instr.mnemonic == "c.ole.s" || instr.mnemonic == "c.ngt.s") {
+            out << "    if (" << F(fs) << " <= " << F(ft)
+                << ") regs->fcr31 |= (1u<<23); else regs->fcr31 &= ~(1u<<23);\n";
+        } else if (instr.mnemonic == "c.ult.s") {
+            out << "    if (!(" << F(fs) << " >= " << F(ft)
+                << ")) regs->fcr31 |= (1u<<23); else regs->fcr31 &= ~(1u<<23);\n";
+        } else if (instr.mnemonic == "c.ule.s") {
+            out << "    if (!(" << F(fs) << " > " << F(ft)
+                << ")) regs->fcr31 |= (1u<<23); else regs->fcr31 &= ~(1u<<23);\n";
+        } else if (instr.mnemonic == "c.f.s" || instr.mnemonic == "c.sf.s") {
+            // Always false
+            out << "    regs->fcr31 &= ~(1u<<23); /* " << instr.mnemonic << " always false */\n";
+        } else if (instr.mnemonic == "c.un.s") {
+            // Unordered (NaN check)
+            out << "    if (isnan(" << F(fs) << ") || isnan(" << F(ft)
+                << ")) regs->fcr31 |= (1u<<23); else regs->fcr31 &= ~(1u<<23);\n";
+        } else {
+            out << "    /* TODO: " << instr.mnemonic << " */\n";
+        }
+        break;
+    }
     default:
         out << "    /* UNHANDLED: " << instr.mnemonic << " " << instr.operands << " */\n";
         break;

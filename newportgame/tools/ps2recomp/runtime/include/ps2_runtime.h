@@ -37,7 +37,7 @@ typedef struct {
     uint32_t pc;      /* Program counter (tracked optionally)              */
     uint32_t sa;      /* Shift-amount register (EE extension)              */
     /* FPU (COP1) */
-    float    f[32];   /* Floating-point registers                          */
+    float    f[33];   /* f[0-31]=FP registers, f[32]=ACC (PS2 accumulator) */
     uint32_t fcr31;   /* FPU control/status register                       */
 } PS2Regs;
 
