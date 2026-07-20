@@ -77,6 +77,12 @@ DecodedInstr MIPSDisassembler::disassemble(uint32_t word, uint32_t pc) {
         return d;
     case MIPSOpcode::COP1:
         return decode_cop1(word, pc);
+    case MIPSOpcode::CACHE:
+        // Cache maintenance — safe NOP in software recompilation
+        d.category = InstrCategory::NOP;
+        d.mnemonic = "cache";
+        d.operands = "";
+        return d;
     case MIPSOpcode::COP2:
         // VU0 macro-mode instructions — op=0x12
         // These drive the VU0 coprocessor from the EE main CPU.

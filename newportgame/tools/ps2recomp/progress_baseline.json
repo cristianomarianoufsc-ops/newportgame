@@ -1,0 +1,22 @@
+{
+  "description": "Anti-false-positive baseline. Updated by validate_progress.py --accept-baseline ONLY after confirming REAL progress.",
+  "rules": [
+    "0 syscalls            = FALSE POSITIVE (ELF not loaded into ps2_ram)",
+    ">1_000_000_000 calls  = FALSE POSITIVE (spin loop active)",
+    "syscall 0x00 dominates (>95%)  = spin loop in thread-yield wait",
+    "syscall 0x83 dominates (>95%)  = DMA merge spin loop (FIXED in bios_stub)",
+    "UNHANDLED count UP    = REGRESSION in recompiler",
+    "TODO count UP         = REGRESSION in recompiler"
+  ],
+  "known_blockers": {
+    "syscall_0x83": "FIXED — alternating DMA pointer return in bios_stub.cpp (commit 0070940)",
+    "syscall_0x00": "ACTIVE — game spin-waits on thread-yield (r[3]=0). Needs: detect loop + simulate wakeup or implement real thread reschedule stub in bios_stub.cpp. The game calls syscall with r[3]=0 (~2.4B times) waiting for IOP/thread event. Real BIOS would suspend thread and reschedule. Fix: add counter in default/0x00 case, after N calls set regs->r[2]=1 to simulate wakeup."
+  },
+  "unhandled_count": 0,
+  "todo_count": 0,
+  "syscall_total": 2431903281,
+  "syscall_unique": 1,
+  "frames_rendered": 0,
+  "accepted_at": "2026-07-20T04:30:00Z",
+  "note": "After 0x83 fix: 0x00 dominates. syscall_unique=1 means only one real code reached — game stuck before BIOS init completes. Progress: UNHANDLED went from 2410 to 0."
+}

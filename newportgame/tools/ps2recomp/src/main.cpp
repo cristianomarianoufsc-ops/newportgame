@@ -12,11 +12,12 @@
 static void print_usage(const char* prog) {
     std::cout << "PS2 Static Recompiler\n\n";
     std::cout << "Usage:\n";
-    std::cout << "  " << prog << " info    <game.iso>              -- Show ISO/ELF info\n";
-    std::cout << "  " << prog << " list    <game.iso>              -- List ISO files\n";
-    std::cout << "  " << prog << " disasm  <game.iso> [n_instrs]   -- Disassemble entry point\n";
-    std::cout << "  " << prog << " extract <game.iso> <outdir>     -- Extract main ELF\n";
-    std::cout << "  " << prog << " recomp  <game.iso> <out.c>      -- Static recompile to C\n";
+    std::cout << "  " << prog << " info       <game.iso>              -- Show ISO/ELF info\n";
+    std::cout << "  " << prog << " list       <game.iso>              -- List ISO files\n";
+    std::cout << "  " << prog << " disasm     <game.iso> [n_instrs]   -- Disassemble entry point\n";
+    std::cout << "  " << prog << " extract    <game.iso> <outdir>     -- Extract main ELF\n";
+    std::cout << "  " << prog << " recomp     <game.iso> <out.c>      -- Static recompile to C (from ISO)\n";
+    std::cout << "  " << prog << " recompelf  <game.elf> <out.c>      -- Static recompile to C (from ELF file)\n";
     std::cout << "\n";
 }
 
@@ -150,6 +151,40 @@ int cmd_recomp(const std::string& iso_path, const std::string& out_c) {
     return 0;
 }
 
+int cmd_recompelf(const std::string& elf_path, const std::string& out_c) {
+    // Load raw ELF bytes from file
+    FILE* f = fopen(elf_path.c_str(), "rb");
+    if (!f) {
+        std::cerr << "Cannot open ELF: " << elf_path << "\n";
+        return 1;
+    }
+    fseek(f, 0, SEEK_END);
+    size_t sz = (size_t)ftell(f);
+    fseek(f, 0, SEEK_SET);
+    std::vector<uint8_t> data(sz);
+    if (fread(data.data(), 1, sz, f) != sz) {
+        fclose(f);
+        std::cerr << "Read error: " << elf_path << "\n";
+        return 1;
+    }
+    fclose(f);
+
+    std::cout << "[ELF] Loaded " << elf_path << "  (" << sz / 1024 << " KB)\n";
+
+    ELFLoader loader(data);
+    if (!loader.parse()) return 1;
+
+    std::cout << "\n[RECOMP] Analyzing...\n";
+    Recompiler recomp(loader.elf());
+    recomp.analyze();
+    recomp.print_functions();
+
+    std::cout << "\n[RECOMP] Emitting C...\n";
+    if (!recomp.emit_c(out_c)) return 1;
+
+    return 0;
+}
+
 // -----------------------------------------------------------------------
 // main
 // -----------------------------------------------------------------------
@@ -180,6 +215,10 @@ int main(int argc, char* argv[]) {
     else if (cmd == "recomp") {
         std::string out_c = (argc >= 4) ? argv[3] : "output.c";
         return cmd_recomp(iso_path, out_c);
+    }
+    else if (cmd == "recompelf") {
+        std::string out_c = (argc >= 4) ? argv[3] : "output.c";
+        return cmd_recompelf(iso_path, out_c);  /* iso_path slot holds elf path here */
     }
     else {
         std::cerr << "Unknown command: " << cmd << "\n";

@@ -45,17 +45,6 @@ typedef struct {
     uint64_t vf[32][2];
 } PS2Regs;
 
-/* 128-bit memory accessors (for lqc2/sqc2) */
-static inline void mem_read128(uint32_t addr, uint64_t* lo64, uint64_t* hi64) {
-    uint8_t* p = ps2_mem_ptr(addr & ~15u);
-    if (p) { memcpy(lo64, p,     8); memcpy(hi64, p + 8, 8); }
-    else   { *lo64 = 0; *hi64 = 0; }
-}
-static inline void mem_write128(uint32_t addr, uint64_t lo64, uint64_t hi64) {
-    uint8_t* p = ps2_mem_ptr(addr & ~15u);
-    if (p) { memcpy(p,     &lo64, 8); memcpy(p + 8, &hi64, 8); }
-}
-
 /* -----------------------------------------------------------------------
  * Memory — arrays defined in ps2_runtime_data.c
  * ----------------------------------------------------------------------- */
@@ -112,6 +101,16 @@ static inline uint64_t mem_read64(uint32_t addr) {
 static inline void mem_write64(uint32_t addr, uint64_t v) {
     uint8_t* p = ps2_mem_ptr(addr);
     if (p) memcpy(p, &v, 8);
+}
+/* 128-bit accessors for lqc2/sqc2 (aligned to 16 bytes on PS2) */
+static inline void mem_read128(uint32_t addr, uint64_t* lo64, uint64_t* hi64) {
+    uint8_t* p = ps2_mem_ptr(addr & ~15u);
+    if (p) { memcpy(lo64, p, 8); memcpy(hi64, p + 8, 8); }
+    else   { *lo64 = 0; *hi64 = 0; }
+}
+static inline void mem_write128(uint32_t addr, uint64_t lo64, uint64_t hi64) {
+    uint8_t* p = ps2_mem_ptr(addr & ~15u);
+    if (p) { memcpy(p, &lo64, 8); memcpy(p + 8, &hi64, 8); }
 }
 
 /* -----------------------------------------------------------------------
