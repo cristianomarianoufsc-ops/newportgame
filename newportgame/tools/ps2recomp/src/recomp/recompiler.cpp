@@ -47,7 +47,38 @@ void Recompiler::analyze() {
         }
     }
 
-    std::cout << "[RECOMP] Discovered " << m_functions.size() << " functions\n";
+    // Post-pass: branch/jump targets that land in gaps between discovered
+    // functions must become functions themselves — emit_function turns them
+    // into ps2_dispatch stubs, and a hole in the dispatch table silently
+    // no-ops (e.g. func_13e090's fallthrough tail 0x13e0b8 broke malloc).
+    bool changed = true;
+    while (changed && m_functions.size() < MAX_FUNCTIONS) {
+        changed = false;
+        std::vector<uint32_t> orphans;
+        for (auto& [a, fn] : m_functions) {
+            auto consider = [&](uint32_t t) {
+                if (t == 0 || !m_elf.vaddr_to_offset(t)) return;
+                auto it = m_functions.upper_bound(t);
+                if (it != m_functions.begin()) {
+                    auto prev = std::prev(it);
+                    if (t >= prev->second.start_addr && t <= prev->second.end_addr)
+                        return;   // already covered by an existing function
+                }
+                orphans.push_back(t);
+            };
+            for (uint32_t t : fn.jump_targets) consider(t);
+            for (uint32_t t : fn.call_targets) consider(t);
+        }
+        for (uint32_t t : orphans) {
+            if (!m_functions.count(t)) {
+                discover_function(t, "");
+                changed = true;
+            }
+        }
+    }
+
+    std::cout << "[RECOMP] Discovered " << m_functions.size()
+              << " functions (after gap-target post-pass)\n";
 }
 
 void Recompiler::discover_function(uint32_t addr, const std::string& name) {
@@ -164,7 +195,19 @@ std::string Recompiler::emit_instruction(const DecodedInstr& instr,
 
     switch (instr.category) {
     case InstrCategory::NOP:
-        out << "    /* nop */\n";
+        // COP0 subset — enough for DI/EI critical sections (Status bit 16).
+        if (instr.mnemonic == "mfc0")
+            out << "    " << R(instr.rt) << " = (uint64_t)(int64_t)(int32_t)regs->cop0["
+                << std::to_string(instr.rd) << "];\n";
+        else if (instr.mnemonic == "mtc0")
+            out << "    regs->cop0[" << std::to_string(instr.rd) << "] = (uint32_t)"
+                << R(instr.rt) << ";\n";
+        else if (instr.mnemonic == "di")
+            out << "    regs->cop0[12] &= ~0x10000u; /* di: clear EIE */\n";
+        else if (instr.mnemonic == "ei")
+            out << "    regs->cop0[12] |= 0x10000u; /* ei: set EIE */\n";
+        else
+            out << "    /* nop */\n";
         break;
     case InstrCategory::ALU: {
         // ADDIU $rt, $rs, imm  ->  r[rt] = (int32_t)(r[rs] + imm)
@@ -708,14 +751,16 @@ bool Recompiler::emit_c(const std::string& output_path) {
 
     // Emit dynamic dispatch table for jalr support
     f << "// Dynamic dispatch — resolves jalr targets at runtime\n";
+    f << "void ps2_call(uint32_t addr, PS2Regs* regs); /* public entry for runtime (threads, callbacks) */\n";
     f << "static void ps2_dispatch(uint32_t addr, PS2Regs* regs) {\n";
     f << "    switch (addr) {\n";
     for (auto& [addr, func] : m_functions) {
         f << "    case 0x" << std::hex << addr << "u: func_" << std::hex << addr << "(regs); return;\n";
     }
-    f << "    default: break; /* unknown jalr target — no-op */\n";
+    f << "    default: ps2_report_unknown_dispatch(addr, regs->pc); break;\n";
     f << "    }\n";
     f << "}\n\n";
+    f << "void ps2_call(uint32_t addr, PS2Regs* regs) { ps2_dispatch(addr, regs); }\n\n";
 
     // Emit each function
     for (auto& [addr, func] : m_functions) {
@@ -726,6 +771,9 @@ bool Recompiler::emit_c(const std::string& output_path) {
     f << "// Game entry point — called by host_main.cpp\n";
     f << "void ps2_game_start(void) {\n";
     f << "    PS2Regs regs = {0};\n";
+    f << "    regs.cop0[12] = 0x10001u;   /* Status: EIE|IE set at boot */\n";
+    f << "    regs.r[29] = 0x01ffff80u;   /* sp: top of 32MB RAM (crt0 may override) */\n";
+    f << "    ps2_active_pc = &regs.pc;   /* expose pc for host PC-sampler */\n";
     f << "    func_" << std::hex << m_elf.entry_point << "(&regs);\n";
     f << "}\n\n";
     // Keep a standalone main for direct compilation (without runtime)

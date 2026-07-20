@@ -179,9 +179,51 @@ static void signal_handler(int sig) {
 
 extern "C" void dump_syscall_stats(void);
 
+// -----------------------------------------------------------------------
+// PC sampler — background thread samples the running guest PC to locate
+// spin loops in recompiled code (no debugger needed).
+// dump_pc_samples() prints the hottest guest addresses.
+// -----------------------------------------------------------------------
+#include <thread>
+#include <map>
+#include <vector>
+#include <algorithm>
+
+extern "C" { volatile uint32_t* ps2_active_pc = nullptr; }
+
+static std::map<uint32_t, uint64_t> g_pc_hist;   // bucketed by 16 bytes
+static std::atomic<bool> g_sampler_run{false};
+
+extern "C" void dump_pc_samples(void) {
+    std::vector<std::pair<uint64_t, uint32_t>> v;
+    uint64_t total = 0;
+    for (auto& kv : g_pc_hist) { v.push_back({kv.second, kv.first}); total += kv.second; }
+    std::sort(v.rbegin(), v.rend());
+    fprintf(stderr, "[SAMPLER] PC histogram (total=%llu samples, bucket=16B):\n",
+            (unsigned long long)total);
+    int n = 0;
+    for (auto& [cnt, pc] : v) {
+        fprintf(stderr, "  0x%08x : %6llu  (%.1f%%)\n", pc,
+                (unsigned long long)cnt, total ? 100.0 * cnt / total : 0.0);
+        if (++n >= 15) break;
+    }
+}
+
+extern "C" void start_pc_sampler(void) {
+    g_sampler_run = true;
+    std::thread([] {
+        while (g_sampler_run) {
+            volatile uint32_t* p = ps2_active_pc;
+            if (p) g_pc_hist[*p & ~0xFu]++;
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
+        }
+    }).detach();
+}
+
 static void sigalrm_handler(int) {
     fprintf(stderr, "[HEADLESS] SIGALRM — dumping stats after timeout:\n");
     dump_syscall_stats();
+    dump_pc_samples();
     fprintf(stderr, "[HEADLESS] frames=%llu  gs_writes=%llu\n",
             (unsigned long long)g_frame_count.load(),
             (unsigned long long)g_gs_writes.load());
@@ -246,6 +288,7 @@ int main(int argc, char** argv) {
             "[HEADLESS] Will stop after %d GS_FINISH events\n",
             g_headless_max_frames);
         install_signal_handlers();
+        start_pc_sampler();
         alarm(25);   // SIGALRM after 25s → dump syscall stats then exit
         gs_set_frame_callback(headless_frame_cb);
         fprintf(stderr, "[HEADLESS] Calling ps2_game_start()...\n");

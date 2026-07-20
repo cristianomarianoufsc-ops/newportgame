@@ -72,7 +72,14 @@ DecodedInstr MIPSDisassembler::disassemble(uint32_t word, uint32_t pc) {
             default:   d.mnemonic = "cop0.co"; break;
             }
         } else {
-            d.mnemonic = "cop0";
+            // MF0/MT0 — real COP0 register moves (Status etc.). Needed:
+            // GoW's DI/EI critical sections spin on Status bit 16 (EIE);
+            // treating mfc0 as nop makes that loop infinite.
+            switch (BITS(word, 25, 21)) {
+            case 0x00: d.mnemonic = "mfc0"; break;
+            case 0x04: d.mnemonic = "mtc0"; break;
+            default:   d.mnemonic = "cop0"; break;
+            }
         }
         return d;
     case MIPSOpcode::COP1:

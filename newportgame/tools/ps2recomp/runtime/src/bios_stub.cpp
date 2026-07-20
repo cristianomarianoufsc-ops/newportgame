@@ -25,6 +25,16 @@
 static std::atomic<uint64_t> g_syscall_total{0};
 static std::unordered_map<uint32_t, uint64_t> g_syscall_counts;
 
+// -----------------------------------------------------------------------
+// Syscall trace tool — set PS2_TRACE_SYSCALLS=N to print the first N calls
+// of EACH syscall code with args (a0-a3) and return value (v0). Great for
+// diagnosing spin loops and unknown syscalls without a debugger.
+// -----------------------------------------------------------------------
+static uint32_t g_trace_limit = []() -> uint32_t {
+    const char* e = getenv("PS2_TRACE_SYSCALLS");
+    return e ? (uint32_t)strtoul(e, nullptr, 0) : 0;
+}();
+
 extern "C" void dump_syscall_stats(void) {
     fprintf(stderr, "[BIOS] Syscall stats (total=%llu):\n",
             (unsigned long long)g_syscall_total.load());
@@ -37,6 +47,21 @@ extern "C" void dump_syscall_stats(void) {
 }
 
 // -----------------------------------------------------------------------
+// Public dispatcher from the recompiled output — lets stubs invoke guest
+// code (thread entries, callbacks) synchronously.
+extern "C" void ps2_call(uint32_t addr, PS2Regs* regs);
+
+// Minimal thread table for CreateThread/StartThread (no scheduler:
+// StartThread runs the entry to completion synchronously).
+#define MAX_THREADS 32
+struct GuestThread {
+    uint32_t func = 0, stack = 0, stack_size = 0, gp = 0;
+    bool valid = false;
+};
+static GuestThread g_threads[MAX_THREADS];
+static uint32_t    g_next_tid = 2;   // 1 is reserved for the main thread
+
+// -----------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------
 static const char* str_from_ram(uint32_t vaddr) {
@@ -47,39 +72,67 @@ static const char* str_from_ram(uint32_t vaddr) {
 // -----------------------------------------------------------------------
 // EE BIOS syscall codes (incomplete — most common ones)
 // -----------------------------------------------------------------------
+// NOTE: this table previously used WRONG numbers (0x3c was treated as
+// printf when it is really SetupThread — so the game's sp stayed 0 and
+// every stack pointer went negative; 0x3d is SetupHeap, so the heap was
+// never initialised and malloc spun on an empty free list). These values
+// now follow the real EE kernel table (ps2sdk syscallno).
 enum EESyscall : uint32_t {
     SYS_RESET_EE            = 0x01,
     SYS_SET_GS_CRT          = 0x02,  // SetGsCrt / display mode
-    SYS_INIT_MAIN_THREAD    = 0x03,
-    SYS_INIT_HEAP           = 0x04,
-    SYS_END_OF_HEAP         = 0x05,
+    SYS_EXIT                = 0x04,
+    SYS_LOAD_EXEC_PS2       = 0x06,
+    SYS_ADD_INTC_HANDLER    = 0x10,
+    SYS_REMOVE_INTC_HANDLER = 0x11,
+    SYS_ADD_DMAC_HANDLER    = 0x12,
+    SYS_REMOVE_DMAC_HANDLER = 0x13,
+    SYS_ENABLE_INTC         = 0x14,
+    SYS_DISABLE_INTC        = 0x15,
+    SYS_ENABLE_DMAC         = 0x16,
+    SYS_DISABLE_DMAC        = 0x17,
     SYS_CREATE_THREAD       = 0x20,
     SYS_DELETE_THREAD       = 0x21,
     SYS_START_THREAD        = 0x22,
     SYS_EXIT_THREAD         = 0x23,
     SYS_EXIT_DELETE_THREAD  = 0x24,
-    SYS_SLEEP_THREAD        = 0x40,
-    SYS_WAKEUP_THREAD       = 0x41,
-    SYS_ISIGNAL_SEMA        = 0x45,
-    SYS_WAIT_SEMA           = 0x47,
-    SYS_CREATE_SEMA         = 0x50,
-    SYS_DELETE_SEMA         = 0x51,
-    SYS_SIGNAL_SEMA         = 0x52,
-    SYS_POLL_SEMA           = 0x53,
-    SYS_REFER_SEMA_STATUS   = 0x54,
-    SYS_SET_ALARM           = 0x60,
-    SYS_RELEASE_ALARM       = 0x62,
-    SYS_DI                  = 0x64,  // Disable interrupts
-    SYS_EI                  = 0x65,  // Enable interrupts
-    SYS_FLUSH_CACHE         = 0x68,
+    SYS_TERMINATE_THREAD    = 0x25,
+    SYS_CHANGE_THREAD_PRIO  = 0x29,
+    SYS_ICHANGE_THREAD_PRIO = 0x2A,
+    SYS_ROTATE_TREADY_QUEUE = 0x2B,
+    SYS_GET_THREAD_ID       = 0x2F,
+    SYS_REFER_THREAD_STATUS = 0x30,
+    SYS_SLEEP_THREAD        = 0x32,
+    SYS_WAKEUP_THREAD       = 0x33,
+    SYS_IWAKEUP_THREAD      = 0x34,
+    SYS_CANCEL_WAKEUP       = 0x35,
+    SYS_SETUP_THREAD        = 0x3C,  // RFU060: returns stack top -> sp
+    SYS_SETUP_HEAP          = 0x3D,  // RFU061: returns heap end
+    SYS_END_OF_HEAP         = 0x3E,
+    SYS_CREATE_SEMA         = 0x40,
+    SYS_DELETE_SEMA         = 0x41,
+    SYS_SIGNAL_SEMA         = 0x42,
+    SYS_ISIGNAL_SEMA        = 0x43,
+    SYS_WAIT_SEMA           = 0x44,
+    SYS_POLL_SEMA           = 0x45,
+    SYS_IPOLL_SEMA          = 0x46,
+    SYS_REFER_SEMA_STATUS   = 0x47,
+    SYS_IREFER_SEMA_STATUS  = 0x48,
+    SYS_SET_ALARM           = 0x4A,  // (also iWakeupThread-adjacent codes)
+    SYS_RELEASE_ALARM       = 0x4B,
+    SYS_FLUSH_CACHE         = 0x64,
     SYS_GS_GET_IMR          = 0x70,
+    SYS_GS_PUT_IMR          = 0x71,
+    SYS_SET_VSYNC_FLAG      = 0x72,
+    SYS_SET_SYSCALL         = 0x74,
+    SYS_SIF_DMA_STAT        = 0x76,
     SYS_SIF_SET_DMA         = 0x77,
-    SYS_SIF_INIT_CMD        = 0x78,
-    SYS_SIF_INIT_RPO        = 0x79,
-    SYS_SIF_SET_REG         = 0x7A,
-    SYS_SIF_GET_REG         = 0x7B,
-    SYS_PRINTF              = 0x3C,
-    SYS_DPRINTF             = 0x3D,
+    SYS_SIF_SET_DCHAIN      = 0x78,
+    SYS_SIF_SET_REG         = 0x79,
+    SYS_SIF_GET_REG         = 0x7A,
+    SYS_DECI2_CALL          = 0x7C,
+    SYS_PS_MODE             = 0x7D,
+    SYS_MACHINE_TYPE        = 0x7E,
+    SYS_GET_MEMORY_SIZE     = 0x7F,
     // SIF DMA buffer submission — returns pointer into DMA ring buffer.
     // Used in a two-cursor merge loop: the game calls it twice, then loops
     // advancing whichever cursor is behind until (s3-524) == (s2-360).
@@ -135,17 +188,25 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         regs->r[2] = 0;
         break;
 
-    case SYS_INIT_MAIN_THREAD:
-        // a0=gp, a1=stack_base, a2=stack_size, a3=args, stack_param
-        // We have no thread system; just record the stack and move on
-        regs->r[2] = a1 + a2;   // Return stack top
+    case SYS_SETUP_THREAD:
+        // RFU060: a0=gp, a1=stack_base (-1 = auto), a2=stack_size,
+        // a3=args, t0=root func. Returns the initial sp (stack top).
+        if (a1 == 0xFFFFFFFF) {
+            regs->r[2] = 0x01FFFF80u;                     // top of 32MB RAM
+        } else {
+            regs->r[2] = a1 + a2 - 0x10;
+        }
+        fprintf(stderr, "[BIOS] SetupThread gp=0x%x stack=0x%x+0x%x -> sp=0x%x\n",
+                a0, a1, a2, (uint32_t)regs->r[2]);
         break;
 
-    case SYS_INIT_HEAP:
-        // a0 = heap base, a1 = heap size (-1 = use all remaining RAM)
+    case SYS_SETUP_HEAP:
+        // RFU061: a0 = heap base, a1 = heap size (-1 = all remaining RAM).
         g_heap_base = a0;
         g_heap_size = (a1 == 0xFFFFFFFF) ? (PS2_RAM_SIZE - a0) : a1;
         regs->r[2] = g_heap_base + g_heap_size;
+        fprintf(stderr, "[BIOS] SetupHeap base=0x%x size=0x%x -> end=0x%x\n",
+                g_heap_base, g_heap_size, (uint32_t)regs->r[2]);
         break;
 
     case SYS_END_OF_HEAP:
@@ -153,20 +214,50 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         break;
 
     // ---- Thread stubs ----
-    case SYS_CREATE_THREAD:
-        // a0 = ThreadParam* — return a fake thread ID
-        regs->r[2] = 1;
+    case SYS_CREATE_THREAD: {
+        // a0 = ThreadParam* {status, func, stack, stack_size, gp, prio}
+        // Record it so StartThread can run the entry synchronously.
+        uint32_t tid = g_next_tid < MAX_THREADS ? g_next_tid++ : 0;
+        if (tid) {
+            g_threads[tid].func       = mem_read32(a0 + 4);
+            g_threads[tid].stack      = mem_read32(a0 + 8);
+            g_threads[tid].stack_size = mem_read32(a0 + 12);
+            g_threads[tid].gp         = mem_read32(a0 + 16);
+            g_threads[tid].valid      = true;
+            fprintf(stderr, "[BIOS] CreateThread tid=%u entry=0x%08x stack=0x%08x+0x%x\n",
+                    tid, g_threads[tid].func, g_threads[tid].stack,
+                    g_threads[tid].stack_size);
+        }
+        regs->r[2] = tid ? tid : (uint32_t)-1;
         break;
+    }
 
     case SYS_DELETE_THREAD:
         regs->r[2] = 0;
         break;
 
-    case SYS_START_THREAD:
-        // a0=thid, a1=arg — in a real impl we'd schedule it
-        // Stub: silently succeed; single-threaded execution continues
+    case SYS_START_THREAD: {
+        // a0=thid, a1=arg — no scheduler: run the thread entry to
+        // completion synchronously on a fresh register file. This is what
+        // lets init threads (heap/free-list setup etc.) actually run.
+        uint32_t tid = a0;
+        if (tid < MAX_THREADS && g_threads[tid].valid && g_threads[tid].func) {
+            PS2Regs t = {};
+            t.cop0[12] = 0x10001u;                       // Status EIE|IE
+            t.r[4]  = a1;                                // a0 = arg
+            t.r[28] = g_threads[tid].gp;                 // gp
+            t.r[29] = g_threads[tid].stack + g_threads[tid].stack_size - 16;
+            t.r[31] = 0;                                 // ra: return = exit
+            fprintf(stderr, "[BIOS] StartThread tid=%u -> running entry 0x%08x synchronously\n",
+                    tid, g_threads[tid].func);
+            ps2_call(g_threads[tid].func, &t);
+            fprintf(stderr, "[BIOS] StartThread tid=%u: entry returned\n", tid);
+        } else {
+            fprintf(stderr, "[BIOS] StartThread: unknown tid=%u (no-op)\n", tid);
+        }
         regs->r[2] = 0;
         break;
+    }
 
     case SYS_EXIT_THREAD:
     case SYS_EXIT_DELETE_THREAD:
@@ -180,6 +271,19 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         break;
 
     case SYS_WAKEUP_THREAD:
+    case SYS_IWAKEUP_THREAD:
+    case SYS_CANCEL_WAKEUP:
+    case SYS_CHANGE_THREAD_PRIO:
+    case SYS_ICHANGE_THREAD_PRIO:
+    case SYS_ROTATE_TREADY_QUEUE:
+        regs->r[2] = 0;
+        break;
+
+    case SYS_GET_THREAD_ID:
+        regs->r[2] = 1;   // main thread
+        break;
+
+    case SYS_TERMINATE_THREAD:
         regs->r[2] = 0;
         break;
 
@@ -197,9 +301,11 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
     case SYS_ISIGNAL_SEMA:
     case SYS_WAIT_SEMA:
     case SYS_POLL_SEMA:
+    case SYS_IPOLL_SEMA:
         regs->r[2] = 0;
         break;
 
+    case SYS_IREFER_SEMA_STATUS:
     case SYS_REFER_SEMA_STATUS:
         // a0=sema_id, a1=SemaParam* — write stub status
         if (ps2_mem_ptr(a1)) {
@@ -214,11 +320,19 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         regs->r[2] = 0;
         break;
 
-    // ---- Interrupt control ----
-    case SYS_DI:
-    case SYS_EI:
-        // Disable/enable EE interrupts — no-op in stub
-        regs->r[2] = 0;
+    // ---- Interrupt / DMAC handler control ----
+    case SYS_ADD_INTC_HANDLER:
+    case SYS_ADD_DMAC_HANDLER:
+        // a0=cause, a1=handler — return a fake handler id
+        regs->r[2] = 1;
+        break;
+    case SYS_REMOVE_INTC_HANDLER:
+    case SYS_REMOVE_DMAC_HANDLER:
+    case SYS_ENABLE_INTC:
+    case SYS_DISABLE_INTC:
+    case SYS_ENABLE_DMAC:
+    case SYS_DISABLE_DMAC:
+        regs->r[2] = 1;
         break;
 
     // ---- Cache ----
@@ -234,10 +348,16 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         regs->r[2] = 0xFF00;
         break;
 
+    // ---- GS / vsync ----
+    case SYS_GS_PUT_IMR:
+    case SYS_SET_VSYNC_FLAG:
+        regs->r[2] = 0;
+        break;
+
     // ---- SIF / IOP communication ----
     case SYS_SIF_SET_DMA:
-    case SYS_SIF_INIT_CMD:
-    case SYS_SIF_INIT_RPO:
+    case SYS_SIF_SET_DCHAIN:
+    case SYS_SIF_DMA_STAT:
         // IOP communication stubs — succeed silently
         regs->r[2] = 0;
         break;
@@ -254,45 +374,61 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
 
     // ---- SIF DMA buffer allocation (0x83) ----
     // This syscall returns a pointer into the EE-side SIF DMA ring buffer.
-    // The game's init path calls it in a two-cursor merge loop:
+    // GoW's init (func_299390 @ 0x299390) calls it in a two-cursor merge loop:
     //
-    //   s3 = SIF_SET_DMA2(a0, a1)    // first call
-    //   s2 = SIF_SET_DMA2(a0, a1)    // second call
+    //   s3 = SIF_SET_DMA2(a0, a1, a2=0x2993B8)   // "524" call site
+    //   s2 = SIF_SET_DMA2(a0, a1, a2=0x299380)   // "360" call site
     //   s1 = s3 - 524
     //   s0 = s2 - 360
     //   while (s1 != s0) { advance whichever cursor is behind via more calls }
     //
-    // For the loop to exit immediately, we need (s3 - 524) == (s2 - 360),
-    // i.e. s3 - s2 == 164.  We return alternating values that satisfy this:
-    //   call 0, 2, 4… → SIF_DMA_BASE + 524  (s1 = SIF_DMA_BASE)
-    //   call 1, 3, 5… → SIF_DMA_BASE + 360  (s0 = SIF_DMA_BASE)
-    // Both cursors map to SIF_DMA_BASE → s1 == s0 → loop exits.
+    // LESSON (1.79B-call spin): a global alternating counter breaks if ANY
+    // extra 0x83 call happens first — parity inverts and s1/s0 sit 164 bytes
+    // apart forever. The two call sites are distinguishable by a2 (r6):
+    //   a2 = 0x2A0000 - 27848 = 0x299338  → caller subtracts 524
+    //   a2 = 0x2A0000 - 27904 = 0x299300  → caller subtracts 360
+    // Return deterministically per call site so both cursors always land on
+    // SIF_DMA_BASE regardless of call order or count.
     case SYS_SIF_SET_DMA2: {
-        uint32_t idx = g_sif_dma_call++;
-        if (idx & 1u)
-            regs->r[2] = SIF_DMA_BASE + 360u;   // even-indexed in pair
-        else
-            regs->r[2] = SIF_DMA_BASE + 524u;   // odd-indexed in pair
+        g_sif_dma_call++;
+        switch (a2) {
+        case 0x299338u: regs->r[2] = SIF_DMA_BASE + 524u; break;
+        case 0x299300u: regs->r[2] = SIF_DMA_BASE + 360u; break;
+        default:
+            // Unknown call site — return the base itself and log once so a
+            // new spin shows up in the trace instead of hiding.
+            if (g_sif_dma_call < 4)
+                fprintf(stderr, "[BIOS] 0x83 unknown a2=0x%x (a0=0x%x a1=0x%x)\n",
+                        a2, a0, a1);
+            regs->r[2] = SIF_DMA_BASE;
+            break;
+        }
         break;
     }
 
-    // ---- Debug output ----
-    case SYS_PRINTF:
-    case SYS_DPRINTF: {
-        // a0 = format string ptr (PS2 vaddr)
-        const char* fmt = str_from_ram(a0);
-        // We don't parse format args (they're in PS2 registers/stack).
-        // Just print the raw format string so we can see game debug output.
-        fprintf(stderr, "[PS2] %s", fmt);
+    // ---- Debug / misc ----
+    case SYS_DECI2_CALL:
+        regs->r[2] = 1;
+        break;
+    case SYS_PS_MODE:
+    case SYS_MACHINE_TYPE:
         regs->r[2] = 0;
         break;
-    }
+    case SYS_GET_MEMORY_SIZE:
+        regs->r[2] = PS2_RAM_SIZE;
+        break;
 
     default:
-        // Unknown syscall — succeed silently
-        // Uncomment to debug unknown codes:
-        // fprintf(stderr, "[BIOS] Unknown syscall 0x%x (a0=0x%x a1=0x%x)\n", code, a0, a1);
+        // Unknown syscall — succeed silently (traced below when enabled)
         regs->r[2] = 0;
         break;
+    }
+
+    // Trace tool: log first N calls of each code (env PS2_TRACE_SYSCALLS=N)
+    if (g_trace_limit && g_syscall_counts[code] <= g_trace_limit) {
+        fprintf(stderr,
+                "[TRACE] syscall 0x%02x #%llu  a0=0x%x a1=0x%x a2=0x%x a3=0x%x -> v0=0x%x\n",
+                code, (unsigned long long)g_syscall_counts[code],
+                a0, a1, a2, a3, (uint32_t)regs->r[2]);
     }
 }
