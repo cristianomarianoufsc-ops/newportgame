@@ -5,13 +5,13 @@
 # compile CXX with /nix/store/a0d7m3zn9p2dfa1h7ag9h2wzzr2w25sn-gcc-wrapper-14.2.1.20250322/bin/g++
 C_DEFINES = 
 
-C_INCLUDES = -I/home/runner/workspace/tools/ps2recomp/runtime/include -I/nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2 -I/nix/store/91dcv6yfmlhs75q5fckc060j7fya06yv-openal-soft-1.24.2/include/AL
+C_INCLUDES = -I/home/runner/workspace/tools/ps2recomp/runtime/include -I/nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include -I/nix/store/91dcv6yfmlhs75q5fckc060j7fya06yv-openal-soft-1.24.2/include/AL -I/nix/store/sijv03md3y5v8prmg8xk3fm0p886ajld-glew-2.2.0-dev/include -I/nix/store/akn28bf4vh2q3p2czwkm37acmf33bvgd-libglvnd-1.7.0-dev/include -I/nix/store/lnrbx5fy918mhbxci2ss4ri83xzca0a1-glu-9.0.3-dev/include
 
 C_FLAGS = -O3 -DNDEBUG -std=gnu11 -Wall -Wno-unused-function -Wno-unused-variable -D_GNU_SOURCE=1 -D_REENTRANT -Wno-unused-label -O2
 
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/home/runner/workspace/tools/ps2recomp/runtime/include -I/nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include/SDL2 -I/nix/store/91dcv6yfmlhs75q5fckc060j7fya06yv-openal-soft-1.24.2/include/AL
+CXX_INCLUDES = -I/home/runner/workspace/tools/ps2recomp/runtime/include -I/nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include -I/nix/store/91dcv6yfmlhs75q5fckc060j7fya06yv-openal-soft-1.24.2/include/AL -I/nix/store/sijv03md3y5v8prmg8xk3fm0p886ajld-glew-2.2.0-dev/include -I/nix/store/akn28bf4vh2q3p2czwkm37acmf33bvgd-libglvnd-1.7.0-dev/include -I/nix/store/lnrbx5fy918mhbxci2ss4ri83xzca0a1-glu-9.0.3-dev/include
 
 CXX_FLAGS = -O3 -DNDEBUG -std=gnu++17 -Wall -Wextra -Wno-unused-parameter -D_GNU_SOURCE=1 -D_REENTRANT -O2
 
