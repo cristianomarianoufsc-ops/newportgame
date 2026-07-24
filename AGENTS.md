@@ -275,13 +275,19 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 - [x] **find_spin.py** — ferramenta de diagnóstico de hot-PC (função + callers + cadeia)
 - [x] **`build_relink.sh --full` corrigido** — flag `-DPS2_RECOMP_HAS_HOST` adicionada; geração automática de `--wrap` flags
 - [x] **`SYS_SIF_GET_REG` (0x7A)** — retorna `0x20000` para desbloquear polling loop em `func_296710` / `func_2966bc`
+- [x] **`func_27a810` stub (sceSifLoadModule)** — sem ELF/IOP, slot pool em RAM está zerado; patchado em `output_runtime.c` → retorna handle 1
+- [x] **`func_2990d0` stub (SIF boot-check)** — polls bit 0x40000 que nunca é setado sem IOP; patchado → retorna 1
+- [x] **`func_299120` stub (module-load checker)** — lê struct de módulo em RAM zerada; patchado → retorna 1
+- [x] **Headers corrigidos** — `include/ps2_runtime.h` e `ps2_gs_regs.h` eram symlinks auto-referentes; substituídos por arquivos reais
+- [x] **`build_relink.sh` corrigido** — agora recompila `ps2_runtime_data.c` explicitamente (evita undefined ref a `ps2_report_unknown_dispatch`)
+- [x] **Estrutura do repo limpa** — pasta `newportgame/newportgame/` (duplicata acidental) removida; tudo na raiz
 - [ ] Dispatch indireto (`jalr`) — cobertura parcial; vtables/callbacks dinâmicos podem não estar mapeados
 - [ ] OpenAL real no SPU2
 - [ ] Funções fora do range recompilado (gaps) — implementar via override_stubs.c
 
 ---
 
-## Estado atual (2025-07-24)
+## Estado atual (2026-07-24)
 
 ### Histórico de hot-PCs resolvidos
 
@@ -290,20 +296,26 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 | `0x13faf0` (100%) | Loop infinito na linked list de threads — `mem[0x2CBBB0]=0` (BSS); sentinela esperado em `0x2CBBB0` | `SYS_SETUP_THREAD` inicializa `mem[0x2CBBB0]=0x2CBBB0` |
 | `0x220730` (100%) | `func_21ff00` (VBlank wait) — bug de delay-slot: `bne` usava `v0=20000` (delay slot) em vez do resultado do `slt`; loop infinito | Patch direto em `output_runtime.c`: incrementa `mem[0x29C7D4]` e retorna |
 | `0x294030` (87%) + `0x296710` (13%) | `syscall 0x7A` (`SYS_SIF_GET_REG`) retornava 0; loop em `L_296710` aguarda `result & 0x20000 != 0` | Implementar `case SYS_SIF_GET_REG: regs->r[2] = 0x20000u` |
+| `0x27a8f0` (99.9%) | `func_27a810` (sceSifLoadModule) — slot pool em RAM zerada (sem ELF); `func_296e10` retornava null → loop infinito com syscalls 0x40/0x41/0x77 | Stub `func_27a810`, `func_2990d0`, `func_299120` em `output_runtime.c` → retornam 1 |
 
-### Estado do sampler após todos os fixes
+### Estado atual do binário
 
 ```
-[SAMPLER] PC histogram — após fix 0x7A (resultado a confirmar)
-frames=0  gs_writes=0  (ainda)
+ps2_game: compilado OK (2.0M) — build_relink.sh --full concluído
+Próximo headless: aguarda ELF (SCUS_973.99.elf) para rodar
 ```
 
 ### Próximos passos imediatos
 
-1. **Rodar headless** pós-fix `0x7A` — ver novo hot-PC no sampler
-2. **`find_spin.py build/output.c <novo-hot-PC>`** — identificar próximo bloqueador
-3. **Implementar fix** em `bios_stub.cpp` (sem recompilar output_runtime.c se possível)
-4. **`bash build_relink.sh`** → testar → commitar → push
+1. **Obter ELF** via `python3 tools/ps2recomp/download_iso_robust.py` (requer ISO do jogo)
+2. **Rodar headless** com o novo binário:
+   ```bash
+   tools/ps2recomp/runtime/build/ps2_game --headless --frames 30 \
+     tools/ps2recomp/build/elf_out/SCUS_973.99.elf 2>&1 | tee /tmp/headless.log
+   python3 tools/ps2recomp/triage_headless.py /tmp/headless.log
+   ```
+3. **Analisar novo hot-PC** com `find_spin.py`
+4. **Implementar fix** → `bash build_relink.sh` → commitar → push
 
 ### Armadilha crítica — intra-TU
 
