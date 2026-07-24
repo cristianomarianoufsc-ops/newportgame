@@ -378,8 +378,12 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         break;
 
     case SYS_SIF_GET_REG:
-        // a0 = reg index — return 0 (IOP not initialised)
-        regs->r[2] = 0;
+        // a0 = reg index / bitmask.
+        // GoW boot polls this in two patterns:
+        //   1. a0=0x80000000 → "IOP initialised?" → check result != 0
+        //   2. a0=4          → bitmask poll at L_296710 → check result & 0x20000 != 0
+        // Returning 0x20000 satisfies both (non-zero AND bit-17 set).
+        regs->r[2] = 0x20000u;
         break;
 
     // ---- SIF DMA buffer allocation (0x83) ----

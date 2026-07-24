@@ -59,6 +59,11 @@ bash tools/ps2recomp/build_relink.sh          # recompila runtime + relinka
 bash tools/ps2recomp/build_relink.sh --full   # + recompila output_runtime.c (~5min)
 ```
 
+**IMPORTANTE:** `--full` requer `-DPS2_RECOMP_HAS_HOST` (já incluído no script).
+Ao usar `--full`, o script aplica automaticamente esse define para evitar conflito de `main()`.
+
+Gera flags `--wrap` automaticamente para cada `__wrap_func_*` definida em `override_stubs.c`.
+
 Se as libs do nix store mudarem de hash (ambiente recriado), rode cmake uma vez:
 ```bash
 cmake -S tools/ps2recomp/runtime -B tools/ps2recomp/runtime/build
@@ -68,6 +73,25 @@ e atualize os paths hardcodados no topo de `build_relink.sh`.
 ---
 
 ## 🔧 Ferramentas PONTUAIS
+
+### `tools/ps2recomp/find_spin.py` — diagnóstico de hot-PC ⭐ NOVO
+
+Dado um endereço PS2 (hot-PC do sampler), mostra a função que contém esse endereço,
+o código C ao redor, todos os callers diretos e a cadeia de chamadas (N níveis).
+
+```bash
+python3 tools/ps2recomp/find_spin.py build/output.c 0x220730
+python3 tools/ps2recomp/find_spin.py build/output.c 0x220730 --callers 4
+python3 tools/ps2recomp/find_spin.py build/output.c 0x220730 --ctx 20
+```
+
+**Fluxo típico de diagnóstico:**
+1. Rodar `--headless --frames 30` → capturar hot-PC do sampler
+2. `find_spin.py build/output.c <hot-PC>` → identificar função e loop
+3. Analisar código C gerado para entender por que está travado
+4. Implementar fix em `bios_stub.cpp` ou `output_runtime.c`
+
+---
 
 ### `tools/ps2recomp/check_todos.py` — o que ainda falta no recompilador
 
@@ -83,68 +107,48 @@ Os 1225 comentários `/* VU0/MMI NOP: ... */` são intencionais (VU0 = NOP segur
 
 ---
 
-### `tools/ps2recomp/validate_patch.py` — validação pré-commit ⭐ NOVO
+### `tools/ps2recomp/validate_patch.py` — validação pré-commit ⭐
 
 Detecta erros em bios_stub.cpp, gs_stub.cpp, recompiler.cpp, etc. **antes** de commitar.
-Suporta raw strings `R"..."`, line-continuation e comentários /* */.
 
 ```bash
-# Verifica todos os arquivos do runtime
 python3 tools/ps2recomp/validate_patch.py
-
-# Arquivo específico
 python3 tools/ps2recomp/validate_patch.py tools/ps2recomp/runtime/src/bios_stub.cpp
-
-# Modo estrito (exit 2 se houver TODOs)
 python3 tools/ps2recomp/validate_patch.py --strict
 ```
 
-**Rodar antes de todo commit** — evita round desperdiçado por erro de compilação.
+**Rodar antes de todo commit.**
 
 ---
 
-### `tools/ps2recomp/triage_headless.py` — análise do teste headless ⭐ NOVO
-
-Analisa a saída capturada de `ps2_game --headless` e entrega relatório estruturado:
-- **PROGRESSO REAL** (frames > 0 por código PS2 nativo) vs **BLOQUEADO** vs **CRASH**
-- Top-15 hot PCs do sampler (spin loops)
-- Syscalls mais chamadas
-- Diagnóstico do bloqueador
+### `tools/ps2recomp/triage_headless.py` — análise do teste headless ⭐
 
 ```bash
-# Rodar o jogo headless e capturar log
 tools/ps2recomp/runtime/build/ps2_game --headless --frames 30 \
     tools/ps2recomp/build/elf_out/SCUS_973.99.elf 2>&1 | tee /tmp/headless.log
-
-# Analisar
 python3 tools/ps2recomp/triage_headless.py /tmp/headless.log
-
-# Modo curto (só status + top PC)
 python3 tools/ps2recomp/triage_headless.py /tmp/headless.log --short
-
-# Comparar com run anterior (delta de frames/gs_writes)
-python3 tools/ps2recomp/triage_headless.py /tmp/headless.log --compare /tmp/headless_prev.log
 ```
 
-**CRITÉRIO DE PROGRESSO REAL** (análogo ao C838-GUARD NATIVOS do godofwar):
-- `frames_completados > 0` → código PS2 nativo avançou o boot ✅
-- `frames_completados = 0` → bloqueado; hot PC é o suspeito principal 🔴
+**CRITÉRIO DE PROGRESSO REAL:**
+- `frames > 0` → código PS2 nativo avançou o boot ✅
+- `frames = 0` → bloqueado; hot PC é o suspeito principal 🔴
 
 ---
 
-### `tools/ps2recomp/runtime/src/override_stubs.c` — overrides por endereço ⭐ NOVO
+### `tools/ps2recomp/runtime/src/override_stubs.c` — overrides por endereço ⭐
 
-Permite interceptar qualquer função PS2 por PC **sem rebuildar o output.c**.
-Analogia ao `game_overrides.cpp` do projeto godofwar.
+Permite interceptar qualquer função PS2 por PC sem rebuildar o output.c.
+
+**ATENÇÃO — limitação intra-TU:**
+O `--wrap` do linker **não intercepta chamadas diretas dentro do mesmo `.o`**.
+Se a função alvo e seu caller estão ambos em `output_runtime.c`, o `--wrap` não funciona.
+Nesse caso, patchar `output_runtime.c` diretamente e rebuildar com `--full`.
 
 **Como adicionar um override:**
 1. Declarar `static void override_ADDR(PS2Regs* regs)` em `override_stubs.c`
 2. Adicionar entrada em `ps2_override_table[]` (mantida ordenada por pc)
-3. Rodar `bash build_relink.sh` — sem recompilar output_runtime.c
-
-**Regra anti-falso-positivo:**
-- Override que force-retorna valor sem código PS2 real = mascaramento, não progresso
-- Só usar para funções **fora do range recompilado** (gaps) ou com análise do binário
+3. `bash build_relink.sh` — sem recompilar output_runtime.c
 
 ---
 
@@ -208,24 +212,19 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 ## Ambiente
 
 - **Sistema:** NixOS (Replit)
-- **Python:** `/nix/store/010r29jy64nj14dx7fabacypr4f2q077-python3-3.11.9-env/bin/python3`
-  `python3` pode NÃO estar no PATH — use o path acima explicitamente se necessário.
-  ```bash
-  PYTHON=/nix/store/010r29jy64nj14dx7fabacypr4f2q077-python3-3.11.9-env/bin/python3
-  $PYTHON tools/ps2recomp/check_todos.py build/output.c --category
-  ```
+- **Python:** `python3` disponível no PATH
 - **g++ / make:** disponíveis no PATH (GCC 14.2)
 - **cmake:** ativo e funcional (o runtime já foi compilado via cmake — build artifacts em `runtime/build/`)
 - **ISO:** `tools/ps2recomp/build/God of War (USA).iso` (8.52 GB — não no git)
   ```bash
-  # Download resumível (usa urllib, sem pip):
   python3 tools/ps2recomp/download_iso_robust.py
   ```
-- **SDL2 headers (nix):** `/nix/store/6vl9b59i822mh3zmri5g4kywahzhp5zw-sdl2-compat-2.32.56-dev/include`
-  (hardcodado em `build_relink.sh` — se mudar, atualizar lá)
-- **Git push:**
+- **ELF:** `tools/ps2recomp/build/elf_out/SCUS_973.99.elf` (1.9 MB — não no git)
+- **Git push com token:**
   ```bash
-  cd tools/ps2recomp && git push https://$GITHUB_TOKEN@github.com/cristianomarianoufsc-ops/newportgame HEAD:main
+  cd newportgame
+  git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/cristianomarianoufsc-ops/newportgame"
+  git push origin main
   ```
 
 ---
@@ -243,67 +242,53 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 - [x] MMI completo — `pcpyld`/`pcpyud`/`pcpyh`/`ppacw`/`padduw`/`pand`/`por` etc.
 - [x] VU0/COP2 — todas as instruções → NOP intencional (`/* VU0/MMI NOP: ... */`)
 - [x] CACHE → NOP
-- [x] **IOP spin-loop (`syscall 0x83`) CORRIGIDO** — `SIF_SET_DMA2` retorna valores alternados que satisfazem merge-cursor imediatamente
-- [x] **Post-pass de gap targets** — branch targets em gaps entre funções descobertos e adicionados ao BFS
-- [x] **`ps2_report_unknown_dispatch()`** — JALR para endereços não mapeados imprime diagnóstico (rate-limited)
+- [x] **IOP spin-loop (`syscall 0x83`) CORRIGIDO** — `SIF_SET_DMA2` retorna valores que satisfazem merge-cursor imediatamente
+- [x] **Post-pass de gap targets** — branch targets em gaps entre funções descobertos
+- [x] **`ps2_report_unknown_dispatch()`** — JALR para endereços não mapeados imprime diagnóstico
 - [x] **HW I/O stubs** — INTC_STAT, DMAC CHCR, SIF BOOTEND retornam valores que desbloqueiam polling loops
-- [x] **validate_patch.py** — validação pré-commit (chaves, parênteses, strings, TODOs)
-- [x] **triage_headless.py** — análise automatizada do teste headless (PROGRESSO REAL vs BLOQUEADO)
-- [x] **override_stubs.c** — sistema de interceptação por endereço sem recompilar output.c
-- [ ] **Teste pós-fix 0x83** — testar `--headless --frames 30` com ELF real (aguardando ISO)
+- [x] **validate_patch.py** — validação pré-commit
+- [x] **triage_headless.py** — análise automatizada do teste headless
+- [x] **override_stubs.c** — sistema de interceptação por endereço
+- [x] **Thread-queue sentinel** — `mem[0x2CBBB0]=0x2CBBB0` em `SYS_SETUP_THREAD`; elimina loop infinito em `func_13fab8`
+- [x] **VBlank stub `func_21ff00`** — delay-slot bug no recompilador tornava bne sempre tomado; patchado em `output_runtime.c` para incrementar `mem[0x29C7D4]` e retornar
+- [x] **find_spin.py** — ferramenta de diagnóstico de hot-PC (função + callers + cadeia)
+- [x] **`build_relink.sh --full` corrigido** — flag `-DPS2_RECOMP_HAS_HOST` adicionada; geração automática de `--wrap` flags
+- [x] **`SYS_SIF_GET_REG` (0x7A)** — retorna `0x20000` para desbloquear polling loop em `func_296710` / `func_2966bc`
 - [ ] Dispatch indireto (`jalr`) — cobertura parcial; vtables/callbacks dinâmicos podem não estar mapeados
 - [ ] OpenAL real no SPU2
 - [ ] Funções fora do range recompilado (gaps) — implementar via override_stubs.c
 
 ---
 
-## Estado atual e próximos passos
+## Estado atual (2025-07-24)
 
-### Problemas conhecidos
+### Histórico de hot-PCs resolvidos
 
-| Problema | Severidade | Detalhe |
+| Hot-PC | Causa | Fix |
 |---|---|---|
-| **Teste pós-fix 0x83** | 🔴 Crítico | ISO não baixada ainda. Quando disponível: extrair ELF → `--headless --frames 30` → `triage_headless.py` |
-| **Build SDL2 headers** | ✅ Resolvido | Paths hardcodados no `build_relink.sh` a partir do CMakeCache |
-| **`jalr` cobertura parcial** | 🟠 Médio | `ps2_dispatch()` cobre funções via `jal`/`j` estático; vtables/callbacks podem falhar |
-| **SPU2 sem áudio real** | 🟡 Baixo | Stub absorve writes sem produzir som |
+| `0x13faf0` (100%) | Loop infinito na linked list de threads — `mem[0x2CBBB0]=0` (BSS); sentinela esperado em `0x2CBBB0` | `SYS_SETUP_THREAD` inicializa `mem[0x2CBBB0]=0x2CBBB0` |
+| `0x220730` (100%) | `func_21ff00` (VBlank wait) — bug de delay-slot: `bne` usava `v0=20000` (delay slot) em vez do resultado do `slt`; loop infinito | Patch direto em `output_runtime.c`: incrementa `mem[0x29C7D4]` e retorna |
+| `0x294030` (87%) + `0x296710` (13%) | `syscall 0x7A` (`SYS_SIF_GET_REG`) retornava 0; loop em `L_296710` aguarda `result & 0x20000 != 0` | Implementar `case SYS_SIF_GET_REG: regs->r[2] = 0x20000u` |
 
-### Sequência pós-ISO
-
-```bash
-# 1. Verificar que a ISO está completa
-ls -lh tools/ps2recomp/build/"God of War (USA).iso"   # esperado: ~8.52 GB
-
-# 2. Extrair ELF
-cd tools/ps2recomp/build
-./ps2recomp extract "God of War (USA).iso" elf_out/
-
-# 3. Rebuildar runtime (se bios_stub.cpp foi alterado)
-bash ../build_relink.sh
-
-# 4. Testar headless
-../runtime/build/ps2_game --headless --frames 30 elf_out/SCUS_973.99.elf \
-    2>&1 | tee /tmp/headless.log
-
-# 5. Analisar resultado
-PYTHON=/nix/store/010r29jy64nj14dx7fabacypr4f2q077-python3-3.11.9-env/bin/python3
-$PYTHON ../triage_headless.py /tmp/headless.log
-
-# 6. Se frames=0 → ver hot PC no sampler → identificar syscall/função bloqueante
-#    → implementar em bios_stub.cpp ou via override_stubs.c
-#    → rodar validate_patch.py antes de commitar
-#    → rebuild_relink.sh → testar novamente
-```
-
-### Diagnóstico ANTERIOR ao fix do 0x83
+### Estado do sampler após todos os fixes
 
 ```
-syscall 0x83 : 2.576.953.245 (loop infinito no merge de cursores DMA)
-frames=0  gs_writes=0
+[SAMPLER] PC histogram — após fix 0x7A (resultado a confirmar)
+frames=0  gs_writes=0  (ainda)
 ```
 
-**Fix aplicado** (`bios_stub.cpp`): retorna valores alternados `BASE+524` / `BASE+360`
-(`BASE=0x500000`) — `s3-524 == s2-360 = BASE` → loop sai imediatamente.
+### Próximos passos imediatos
+
+1. **Rodar headless** pós-fix `0x7A` — ver novo hot-PC no sampler
+2. **`find_spin.py build/output.c <novo-hot-PC>`** — identificar próximo bloqueador
+3. **Implementar fix** em `bios_stub.cpp` (sem recompilar output_runtime.c se possível)
+4. **`bash build_relink.sh`** → testar → commitar → push
+
+### Armadilha crítica — intra-TU
+
+O `--wrap` do linker **NÃO** intercepta chamadas diretas dentro do mesmo arquivo `.o`.
+Quando o caller e a função alvo estão ambos em `output_runtime.c`, a única solução é
+patchar `output_runtime.c` diretamente e rebuildar com `build_relink.sh --full`.
 
 ### Comparação com o projeto godofwar (outro agente)
 
@@ -311,13 +296,19 @@ frames=0  gs_writes=0
 |---|---|---|
 | Saída do recompilador | 1 arquivo C monolítico (350K linhas) | 5.627 .cpp separados |
 | Contexto de registradores | `PS2Regs*` direto inline | `R5900Context* ctx + PS2Runtime*` |
-| Estado atual | 0 UNHANDLED/TODO, aguardando ISO | PASSO 564+, bloqueado em state machine c838 |
 | Anti-falso-positivo | validate_patch.py + triage_headless.py | anti_fake_guard.py + C838-GUARD NATIVOS |
-| Ferramenta de overrides | override_stubs.c (por endereço) | game_overrides.cpp (5174 linhas) |
-| Build inicial | minutos (1 .c) | horas (5627 .cpp) |
+| Ferramenta de overrides | override_stubs.c (por endereço) | game_overrides.cpp |
+| Ferramenta de diagnóstico | find_spin.py (hot-PC → função → callers) | — |
 
-**Lição do godofwar:** ~300 passos desperdiçados porque substituíam funções inteiras por stubs
-que avançavam estado artificialmente. A causa raiz (função `0x35C1B0` fora do range
-recompilado que escrevia o próximo handler) nunca foi resolvida.
-**Nossa proteção:** override_stubs.c com regra anti-falso-positivo explícita + triage_headless.py
-que exige `frames > 0 por código PS2 nativo` como critério de progresso real.
+**Lição do godofwar:** ~300 passos desperdiçados substituindo funções inteiras por stubs
+que avançavam estado artificialmente. Nossa proteção: triage_headless.py exige
+`frames > 0 por código PS2 nativo` como critério de progresso real.
+
+---
+
+## Sobre a pasta `newportgame/newportgame/`
+
+Dentro do repositório existe uma subpasta `newportgame/` que é uma cópia acidental
+criada por um agente anterior. **Pode ser deletada com segurança** — não contém
+nada que não esteja na raiz do repositório. O conteúdo real do projeto está na
+raiz de `newportgame/` (este repositório).
