@@ -1,3 +1,0 @@
-- [Build paths NixOS](build-paths-nixos.md) — paths hardcodados de SDL2/GLEW/GL/GLU/OpenAL do CMakeCache; usar se build_relink.sh falhar
-- [Tooling workflow](tooling-workflow.md) — validate_patch → build_relink → headless → triage_headless; regra anti-falso-positivo
-- [ISO download](iso-download.md) — wget com confirm=t funciona; URL e destino do arquivo
