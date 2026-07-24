@@ -73,6 +73,11 @@ for src in gs_stub bios_stub spu2_stub host_main; do
     g++ $CXX_FLAGS $INC -c "$RT/src/$src.cpp" -o "$OBJ/src/$src.cpp.o" && echo "OK"
 done
 
+# Recompila sempre ps2_runtime_data.c (contém ps2_report_unknown_dispatch)
+echo -n "  ps2_runtime_data.c ... "
+gcc -O2 -std=gnu11 -Wall -D_GNU_SOURCE=1 -I"$RT/include" \
+    -c "$RT/src/ps2_runtime_data.c" -o "$OBJ/src/ps2_runtime_data.c.o" && echo "OK"
+
 # -----------------------------------------------------------------------
 # Compila override_stubs.c (sistema de interceptação por endereço)
 # -----------------------------------------------------------------------

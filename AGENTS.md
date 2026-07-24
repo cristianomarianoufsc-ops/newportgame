@@ -5,6 +5,27 @@ Este documento descreve as ferramentas disponíveis neste projeto e como usá-la
 
 ---
 
+## 🔁 Regra de push obrigatória
+
+**Após concluir cada uma das etapas abaixo, o agente DEVE fazer `git add -A && git commit && git push origin main` antes de continuar para a próxima etapa:**
+
+1. Depois de atualizar `bios_stub.cpp` com novo fix de syscall
+2. Depois de patchar `output_runtime.c` (fixes intra-TU)
+3. Depois de rodar `build_relink.sh` (ou `--full`) com sucesso
+4. Depois de rodar headless e capturar novo hot-PC
+5. Depois de atualizar o AGENTS.md com novo estado / histórico
+
+**Motivo:** garante que o progresso não se perde entre sessões de agente e que o histórico de fixes é rastreável por commit.
+
+```bash
+cd /caminho/do/repo
+git add -A
+git commit -m "fix: <descrição do que foi corrigido>"
+git push origin main
+```
+
+---
+
 ## Objetivo do projeto
 
 Port nativo de PS2 para PC via recompilação estática MIPS → C → x86-64.
