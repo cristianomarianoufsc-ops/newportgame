@@ -1,5 +1,6 @@
 #include <iostream>
 #include <iomanip>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <cstring>
@@ -17,6 +18,7 @@ static void print_usage(const char* prog) {
     std::cout << "  " << prog << " disasm  <game.iso> [n_instrs]   -- Disassemble entry point\n";
     std::cout << "  " << prog << " extract <game.iso> <outdir>     -- Extract main ELF\n";
     std::cout << "  " << prog << " recomp  <game.iso> <out.c>      -- Static recompile to C\n";
+    std::cout << "  " << prog << " recomp-elf <game.elf> <out.c>  -- Static recompile from ELF (sem ISO)\n";
     std::cout << "\n";
 }
 
@@ -150,6 +152,37 @@ int cmd_recomp(const std::string& iso_path, const std::string& out_c) {
     return 0;
 }
 
+// Recompila diretamente a partir de um ELF (sem precisar da ISO)
+int cmd_recomp_elf(const std::string& elf_path, const std::string& out_c) {
+    std::ifstream f(elf_path, std::ios::binary);
+    if (!f) {
+        std::cerr << "Cannot open ELF: " << elf_path << "\n";
+        return 1;
+    }
+    std::vector<uint8_t> data(
+        (std::istreambuf_iterator<char>(f)),
+        std::istreambuf_iterator<char>()
+    );
+    if (data.empty()) {
+        std::cerr << "ELF file is empty: " << elf_path << "\n";
+        return 1;
+    }
+    std::cout << "[ELF] Loaded " << data.size() << " bytes from " << elf_path << "\n";
+
+    ELFLoader loader(data);
+    if (!loader.parse()) return 1;
+
+    std::cout << "\n[RECOMP] Analyzing...\n";
+    Recompiler recomp(loader.elf());
+    recomp.analyze();
+    recomp.print_functions();
+
+    std::cout << "\n[RECOMP] Emitting C...\n";
+    if (!recomp.emit_c(out_c)) return 1;
+
+    return 0;
+}
+
 // -----------------------------------------------------------------------
 // main
 // -----------------------------------------------------------------------
@@ -180,6 +213,11 @@ int main(int argc, char* argv[]) {
     else if (cmd == "recomp") {
         std::string out_c = (argc >= 4) ? argv[3] : "output.c";
         return cmd_recomp(iso_path, out_c);
+    }
+    else if (cmd == "recomp-elf") {
+        // iso_path aqui é na verdade o caminho do ELF
+        std::string out_c = (argc >= 4) ? argv[3] : "output.c";
+        return cmd_recomp_elf(iso_path, out_c);
     }
     else {
         std::cerr << "Unknown command: " << cmd << "\n";
