@@ -236,11 +236,12 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 - **Python:** `python3` disponível no PATH
 - **g++ / make:** disponíveis no PATH (GCC 14.2)
 - **cmake:** ativo e funcional (o runtime já foi compilado via cmake — build artifacts em `runtime/build/`)
-- **ISO:** `tools/ps2recomp/build/God of War (USA).iso` (8.52 GB — não no git)
-  ```bash
-  python3 tools/ps2recomp/download_iso_robust.py
-  ```
-- **ELF:** `tools/ps2recomp/build/elf_out/SCUS_973.99.elf` (1.9 MB — não no git)
+- **ISO:** `tools/ps2recomp/build/God of War (USA).iso` (8.52 GB — **NÃO NO GIT**, não é mais necessária)
+  - A ISO só é necessária se precisar regenerar `output.c` do zero (raro).
+  - Para baixar: `python3 tools/ps2recomp/download_iso_robust.py`
+- **ELF:** `tools/ps2recomp/build/elf_out/SCUS_973.99.elf` (1.9 MB — **✅ NO GIT desde 2026-07-24**)
+  - Agentes futuros **não precisam baixar a ISO** — o ELF já está no repositório.
+  - Após `git clone`, o ELF já está disponível em `tools/ps2recomp/build/elf_out/SCUS_973.99.elf`.
 - **Git push com token:**
   ```bash
   cd newportgame
@@ -302,20 +303,44 @@ python3 tools/ps2recomp/runtime/recomp_stats.py build/output.c
 
 ```
 ps2_game: compilado OK (2.0M) — build_relink.sh --full concluído
-Próximo headless: aguarda ELF (SCUS_973.99.elf) para rodar
+ELF: tools/ps2recomp/build/elf_out/SCUS_973.99.elf ✅ (commitado no git em 2026-07-24)
+Headless rodado em 2026-07-24: frames=0  gs_writes=0  — BLOQUEADO
 ```
+
+### Resultado do headless (2026-07-24)
+
+Syscalls dominantes (20M+ cada — loop claro):
+- `0x42` SYS_SIGNAL_SEMA : 20 271 241
+- `0x45` SYS_POLL_SEMA   : 20 271 241
+- `0x77` SYS_SIF_SET_DMA : 20 271 241
+
+Top hot-PCs do sampler:
+| PC | % | Cluster |
+|---|---|---|
+| `0x0028f1b0` | 18.9% | |
+| `0x0028b630` | 7.9% | |
+| `0x0028f0c0` | 6.0% | |
+| `0x0028f1a0` | 5.1% | |
+| `0x0028b350` | 3.8% | |
+| `0x00289b40` | 3.3% | |
+| `0x0028de20` | 3.0% | |
+
+Todos os hot-PCs estão no range `0x289xxx–0x28fxxx`.
 
 ### Próximos passos imediatos
 
-1. **Obter ELF** via `python3 tools/ps2recomp/download_iso_robust.py` (requer ISO do jogo)
-2. **Rodar headless** com o novo binário:
+1. **Gerar output.c** (necessário para find_spin.py):
    ```bash
-   tools/ps2recomp/runtime/build/ps2_game --headless --frames 30 \
-     tools/ps2recomp/build/elf_out/SCUS_973.99.elf 2>&1 | tee /tmp/headless.log
-   python3 tools/ps2recomp/triage_headless.py /tmp/headless.log
+   tools/ps2recomp/build/ps2recomp \
+     tools/ps2recomp/build/elf_out/SCUS_973.99.elf \
+     tools/ps2recomp/build/output.c
    ```
-3. **Analisar novo hot-PC** com `find_spin.py`
-4. **Implementar fix** → `bash build_relink.sh` → commitar → push
+2. **Analisar hot-PC** com find_spin.py:
+   ```bash
+   python3 tools/ps2recomp/find_spin.py build/output.c 0x28f1b0 --callers 4
+   ```
+3. **Implementar fix** para o loop de sema/SIF no range `0x289xxx–0x28fxxx`
+4. **Rebuildar** → `bash build_relink.sh` → headless → commitar → push
 
 ### Armadilha crítica — intra-TU
 
