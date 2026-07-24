@@ -90,7 +90,7 @@ fi
 # -----------------------------------------------------------------------
 if [[ "$1" == "--full" ]]; then
     echo "=== Compilando output_runtime.c (pode demorar alguns minutos) ==="
-    C_FLAGS="-O1 -std=gnu11 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-label -D_GNU_SOURCE=1"
+    C_FLAGS="-O1 -std=gnu11 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-label -D_GNU_SOURCE=1 -DPS2_RECOMP_HAS_HOST"
     OUTPUT_OBJ=$(find "$OBJ" -name "output_runtime.c.o" 2>/dev/null | head -1)
     if [ -z "$OUTPUT_OBJ" ]; then
         # Cria diretório espelhando o path absoluto (convenção CMake)
@@ -115,6 +115,17 @@ if [ -z "$OUTPUT_OBJ" ]; then
     exit 1
 fi
 
+# Gera flags --wrap automaticamente para cada função na tabela de overrides
+# Formato esperado em override_stubs.c: void __wrap_func_XXXXX(PS2Regs* regs)
+WRAP_FLAGS=""
+if [ -f "$RT/src/override_stubs.c" ]; then
+    while IFS= read -r fn; do
+        real="${fn/__wrap_/}"
+        WRAP_FLAGS="$WRAP_FLAGS -Wl,--wrap=$real"
+    done < <(grep -oP '(?<=void )__wrap_func_[0-9a-fA-F]+' "$RT/src/override_stubs.c")
+    [ -n "$WRAP_FLAGS" ] && echo "  Wrap flags:$WRAP_FLAGS"
+fi
+
 g++ -O2 \
     "$OBJ/src/gs_stub.cpp.o" \
     "$OBJ/src/bios_stub.cpp.o" \
@@ -124,6 +135,7 @@ g++ -O2 \
     ${OVERRIDE_OBJ:+"$OVERRIDE_OBJ"} \
     "$OUTPUT_OBJ" \
     -o "$RT/build/ps2_game" \
+    $WRAP_FLAGS \
     "$SDL2_SO" "$GLEW_SO" -lm -lpthread \
     "$OPENAL_SO" "$GL_GLX_SO" "$GL_OPEN_SO" "$GL_SO" "$GLU_SO" "$EGL_SO" \
     && echo "=== ps2_game OK: $(ls -lh "$RT/build/ps2_game" | awk '{print $5}') ==="

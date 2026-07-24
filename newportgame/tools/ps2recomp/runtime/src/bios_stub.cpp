@@ -198,6 +198,16 @@ extern "C" void ps2_syscall(PS2Regs* regs, uint32_t /*immediate_unused*/) {
         }
         fprintf(stderr, "[BIOS] SetupThread gp=0x%x stack=0x%x+0x%x -> sp=0x%x\n",
                 a0, a1, a2, (uint32_t)regs->r[2]);
+
+        // Inicializa sentinela da fila de threads (func_13fab8).
+        // mem[0x2CBBB0] é o ponteiro da cabeça da lista ligada de threads.
+        // Em BSS = 0; a travessia checa: if (head == 0x2CBBB0) → lista vazia.
+        // Com head=0 o loop nunca encontra o sentinela → spin infinito.
+        // Apontando a cabeça para si mesma o check passa imediatamente.
+        if (mem_read32(0x2CBBB0u) == 0) {
+            mem_write32(0x2CBBB0u, 0x2CBBB0u);
+            fprintf(stderr, "[BIOS] Thread-queue sentinel init: mem[0x2CBBB0]=0x2CBBB0\n");
+        }
         break;
 
     case SYS_SETUP_HEAP:

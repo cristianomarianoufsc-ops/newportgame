@@ -45,7 +45,7 @@ typedef struct {
  * Forward declarations das funções override
  * Adicione aqui ao implementar novas
  * ----------------------------------------------------------------------- */
-/* (nenhum ativo — adicionar conforme necessário) */
+/* (nenhum ativo — ver __wrap_func_21ff00 abaixo para o fix VBlank) */
 
 /* -----------------------------------------------------------------------
  * Tabela de overrides
@@ -58,6 +58,35 @@ static const OverrideEntry ps2_override_table[] = {
     * { 0x001234ABu, override_some_func,      "some_func"       },
     */
 };
+
+/* -----------------------------------------------------------------------
+ * __wrap_func_21ff00 — fix para loop infinito de VBlank (via --wrap do linker)
+ *
+ * Diagnóstico:
+ *   func_21ff00 [0x21ff00-0x21ff58] é um wait-for-VBlank que lê
+ *   mem[0x29C7D4] (contador de VBlanks), gira ~20000 ciclos, e relê.
+ *   Se o contador não mudou → loop externo (L_21ff20).
+ *   BUG do recompilador: o delay slot (addiu v0, 20000) sobrescreve o
+ *   resultado do slt ANTES do check do bne, tornando a branch sempre
+ *   tomada. O loop nunca termina mesmo com VBlank simulado.
+ *
+ * Fix: substituir a função inteira. Incrementamos mem[0x29C7D4] (simula
+ * um VBlank firing) e retornamos imediatamente. Isso satisfaz qualquer
+ * outro código que aguarde esse contador e mantém a lógica correta.
+ *
+ * REGRA ANTI-FALSO-POSITIVO: esta função é um delay/busy-wait de HW.
+ * Substituí-la não avança state machine artificialmente — apenas remove
+ * um spin que depende de interrupção que nosso runtime nunca dispara.
+ * ----------------------------------------------------------------------- */
+void __wrap_func_21ff00(PS2Regs* regs) {
+    /* Incrementa o contador de VBlank para que quem aguardar via slt veja
+     * o valor atualizado e saia do loop normalmente. */
+    uint32_t vblank_addr = 0x29C7D4u;
+    uint32_t cnt = mem_read32(vblank_addr);
+    mem_write32(vblank_addr, cnt + 1);
+    /* Sem spin — retorna imediatamente. */
+    (void)regs;
+}
 
 static const int PS2_OVERRIDE_COUNT =
     (int)(sizeof(ps2_override_table) / sizeof(ps2_override_table[0]));
